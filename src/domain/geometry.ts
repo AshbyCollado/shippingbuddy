@@ -180,6 +180,7 @@ export const COMMON_BOXES: CommonBoxEntry[] = [
   defineCommonBoxInches("RSC-03", "Representative RSC · Shallow", [20, 15, 4], "Nominal prototype size; verify the actual box."),
   defineCommonBoxInches("RSC-04", "Representative RSC · Large", [24, 20, 17], "Nominal prototype size; verify the actual box."),
   defineCommonBoxInches("RSC-05", "Representative RSC · Long", [30, 10, 9], "Nominal prototype size; verify the actual box."),
+  defineCommonBoxInches("RSC-06", "Representative RSC · 20 in Cube", [20, 20, 20], "Nominal prototype size; verify the actual box."),
 ];
 
 export const FRAGILITY_PRESETS: Record<Fragility, number> = {

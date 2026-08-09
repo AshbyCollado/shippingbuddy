@@ -54,6 +54,10 @@ export const ProtectionGoalSchema = z.union([
 export const PlannerSourceSchema = z.object({
   mode: z.enum(["EXISTING_BOX", "COMMON_BOX", "FLAT_SHEET"]),
   existingBox: DimensionsSchema,
+  measurementBasis: z.enum(["INSIDE", "OUTSIDE", "NOT_SURE"]).default("INSIDE"),
+  boardThicknessMm: positiveNumber.optional(),
+  measurementUncertaintyMm: nonNegativeNumber.optional(),
+  selectedSavedBoxId: z.string().min(1).max(120).optional(),
   selectedCommonBoxId: z.string().min(1).max(80),
   sheet: z.object({
     lengthMm: positiveNumber,
@@ -116,6 +120,7 @@ export function createDefaultPlannerDraft(): PlannerDraft {
         widthMm: inchesToMm(20),
         heightMm: inchesToMm(20),
       },
+      measurementBasis: "INSIDE",
       selectedCommonBoxId: "RSC-04",
       sheet: {lengthMm: inchesToMm(48), widthMm: inchesToMm(64)},
       pattern: "WRAP_BOX_V1",

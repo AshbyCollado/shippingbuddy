@@ -25,7 +25,7 @@ describe("planner draft persistence", () => {
   beforeEach(() => {
     storage = new MemoryStorage();
     Object.defineProperty(globalThis, "window", {configurable: true, value: {localStorage: storage}});
-    usePlannerStore.setState({draft: createDefaultPlannerDraft(), hydration: "loading"});
+    usePlannerStore.setState({draft: createDefaultPlannerDraft(), savedBoxes: [], hydration: "loading"});
   });
 
   afterEach(() => {
@@ -39,7 +39,7 @@ describe("planner draft persistence", () => {
     expect(raw).not.toBeNull();
     const envelope = JSON.parse(raw!);
     expect(envelope).toEqual({
-      state: {draft: expect.objectContaining({schemaVersion: PLANNER_DRAFT_SCHEMA_VERSION})},
+      state: {draft: expect.objectContaining({schemaVersion: PLANNER_DRAFT_SCHEMA_VERSION}), savedBoxes: []},
       version: PLANNER_DRAFT_SCHEMA_VERSION,
     });
     expect(envelope.state).not.toHaveProperty("hydration");
@@ -102,6 +102,56 @@ describe("planner draft persistence", () => {
     await usePlannerStore.persist.rehydrate();
 
     expect(usePlannerStore.getState().draft).toEqual(saved);
-    expect(storage.getItem(PLANNER_STORAGE_KEY)).toBe(savedEnvelope(saved));
+    expect(JSON.parse(storage.getItem(PLANNER_STORAGE_KEY)!)).toEqual({
+      state: {draft: saved, savedBoxes: []},
+      version: PLANNER_DRAFT_SCHEMA_VERSION,
+    });
+  });
+
+  it("migrates a v1 envelope without savedBoxes to an empty inventory", async () => {
+    const saved = createDefaultPlannerDraft();
+    storage.setItem(PLANNER_STORAGE_KEY, JSON.stringify({state: {draft: saved}, version: PLANNER_DRAFT_SCHEMA_VERSION}));
+
+    await usePlannerStore.persist.rehydrate();
+
+    expect(usePlannerStore.getState().draft).toEqual(saved);
+    expect(usePlannerStore.getState().savedBoxes).toEqual([]);
+  });
+
+  it("persists saved boxes independently from the resettable/exported draft", async () => {
+    const store = usePlannerStore.getState();
+    store.setExistingBoxDimension("lengthMm", 400);
+    const saved = store.saveCurrentBox("Garage cube");
+    expect(saved).toMatchObject({ok: true});
+    if (!saved.ok) return;
+    expect(usePlannerStore.getState().savedBoxes).toMatchObject([{id: saved.id, name: "Garage cube", rawDimensions: {lengthMm: 400}}]);
+
+    usePlannerStore.getState().setExistingBoxDimension("lengthMm", 450);
+    expect(usePlannerStore.getState().draft.source.selectedSavedBoxId).toBeUndefined();
+    expect(usePlannerStore.getState().savedBoxes[0].rawDimensions.lengthMm).toBe(400);
+    expect(usePlannerStore.getState().renameSavedBox(saved.id, "Renamed cube")).toBe(true);
+    expect(usePlannerStore.getState().selectSavedBox(saved.id)).toBe(true);
+    expect(usePlannerStore.getState().draft.source.existingBox.lengthMm).toBe(400);
+    expect(usePlannerStore.getState().exportDraft()).not.toContain("savedBoxes");
+    usePlannerStore.getState().resetDraft();
+    expect(usePlannerStore.getState().savedBoxes).toHaveLength(1);
+
+    await usePlannerStore.persist.rehydrate();
+    expect(usePlannerStore.getState().savedBoxes).toMatchObject([{id: saved.id, name: "Renamed cube"}]);
+    usePlannerStore.getState().removeSavedBox(saved.id);
+    expect(usePlannerStore.getState().savedBoxes).toEqual([]);
+  });
+
+  it("rejects malformed saved inventory without merging it", async () => {
+    const draft = createDefaultPlannerDraft();
+    storage.setItem(PLANNER_STORAGE_KEY, JSON.stringify({
+      state: {draft, savedBoxes: [{id: "broken", name: "", rawDimensions: draft.source.existingBox, basis: "INSIDE"}]},
+      version: PLANNER_DRAFT_SCHEMA_VERSION,
+    }));
+
+    await usePlannerStore.persist.rehydrate();
+
+    expect(storage.removals).toContain(PLANNER_STORAGE_KEY);
+    expect(usePlannerStore.getState().savedBoxes).toEqual([]);
   });
 });
