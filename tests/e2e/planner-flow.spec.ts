@@ -85,6 +85,98 @@ test("shape-specific measurements preserve conservative envelopes and explain th
   await expect(page.locator("canvas")).toHaveCount(0);
 });
 
+test("saved inside boxes persist independently, while uncertain measurements block fit", async ({page}) => {
+  await page.goto("/plan/item");
+  for (const label of ["Outside length in", "Outside width in", "Outside height in"]) {
+    const input = page.getByRole("spinbutton", {name: label, exact: true});
+    await input.fill("14");
+    await input.press("Tab");
+  }
+  await page.getByRole("link", {name: /Next/}).click();
+  await expect(page).toHaveURL(/\/plan\/protection$/);
+  await page.getByRole("button", {name: /Extra fit clearance/}).click();
+  const clearance = page.getByRole("spinbutton", {name: "Total extra clearance per axis in", exact: true});
+  await clearance.fill("0");
+  await clearance.press("Tab");
+  await page.getByRole("link", {name: /Next/}).click();
+  await expect(page).toHaveURL(/\/plan\/source$/);
+
+  const insideBasis = page.getByRole("button", {name: /^Inside Measured/});
+  const outsideBasis = page.getByRole("button", {name: /^Outside Measured/});
+  const unsureBasis = page.getByRole("button", {name: /^Not sure Keep/});
+  await expect(insideBasis).toBeVisible();
+  await expect(outsideBasis).toBeVisible();
+  await expect(unsureBasis).toBeVisible();
+  await outsideBasis.click();
+  const thickness = page.getByRole("spinbutton", {name: "Board thickness (one wall) in", exact: true});
+  await thickness.fill("0.157");
+  await thickness.press("Tab");
+  await expect(thickness).toHaveValue("0.157");
+  await insideBasis.click();
+
+  for (const label of ["Inside length in", "Inside width in", "Inside height in"]) {
+    const input = page.getByRole("spinbutton", {name: label, exact: true});
+    await input.fill("16");
+    await input.press("Tab");
+  }
+  await page.getByRole("textbox", {name: "Box name"}).fill("Exact cube");
+  await page.getByRole("button", {name: "Save as new box"}).click();
+  await expect(page.getByText("Box saved to this device.", {exact: true})).toBeVisible();
+  await page.reload();
+  const name = page.getByRole("textbox", {name: "Name for saved box Exact cube"});
+  await expect(name).toBeVisible();
+
+  const currentLength = page.getByRole("spinbutton", {name: "Inside length in", exact: true});
+  await currentLength.fill("17");
+  await currentLength.press("Tab");
+  await page.getByRole("button", {name: "Use this box"}).click();
+  await expect(page.getByRole("button", {name: "Selected"})).toBeVisible();
+  await name.fill("Renamed cube");
+  await name.press("Tab");
+  await expect(page.getByRole("textbox", {name: "Name for saved box Renamed cube"})).toBeVisible();
+
+  await unsureBasis.click();
+  await page.getByRole("link", {name: /Next/}).click();
+  await expect(page).toHaveURL(/\/plan\/fit$/);
+  await expect(page.getByText("Fit is waiting on a measurement", {exact: true})).toBeVisible();
+});
+
+test("fit-first common cards do not silently replace an explicit too-small choice", async ({page}) => {
+  await page.goto("/plan/item");
+  for (const label of ["Outside length in", "Outside width in", "Outside height in"]) {
+    const input = page.getByRole("spinbutton", {name: label, exact: true});
+    await input.fill("16");
+    await input.press("Tab");
+  }
+  await page.getByRole("link", {name: /Next/}).click();
+  await expect(page).toHaveURL(/\/plan\/protection$/);
+  await page.getByRole("button", {name: /Extra fit clearance/}).click();
+  const clearance = page.getByRole("spinbutton", {name: "Total extra clearance per axis in", exact: true});
+  await clearance.fill("0");
+  await clearance.press("Tab");
+  await page.getByRole("link", {name: /Next/}).click();
+  await expect(page).toHaveURL(/\/plan\/source$/);
+  await page.getByRole("button", {name: /A standard box/}).click();
+
+  const cards = page.locator(".common-box-grid button");
+  await expect(cards.first()).toContainText("20 in Cube");
+  await expect(cards.first()).toContainText("Fits");
+  const medium = page.getByRole("button", {name: /RSC.*Medium/});
+  await medium.click();
+  await expect(medium).toHaveAttribute("aria-pressed", "true");
+  await expect(medium).toContainText("Too small");
+  await page.getByRole("link", {name: /Next/}).click();
+  await expect(page.getByText("Representative RSC · Medium is too small.", {exact: true})).toBeVisible();
+
+  await page.getByRole("link", {name: /Box/}).first().click();
+  await expect(medium).toHaveAttribute("aria-pressed", "true");
+  const cube = page.getByRole("button", {name: /RSC.*20 in Cube/});
+  await cube.click();
+  await page.getByRole("link", {name: /Next/}).click();
+  await expect(page.getByText("Representative RSC · 20 in Cube fits the protected item.", {exact: true})).toBeVisible();
+  await expect(page.locator("canvas")).toHaveCount(0);
+});
+
 test("planner routes stay free of canvas/WebGL and expose hydration-safe server controls", async ({page, request}) => {
   const initialMarkup = await request.get("/plan/item");
   expect(await initialMarkup.text()).toContain('disabled=""');
