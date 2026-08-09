@@ -2,12 +2,12 @@
 
 ## Current state
 
-- A durable Shipping Buddy v0.2 goal is active.
-- Product, source-material, box-transformation, renderer, performance, and future-account audits are complete.
-- The external `codex_workflow` reference was reviewed at commit `41fce1ef7d1cce09528f7d5e7d4ec7723db61146`.
-- Project-local workflow configuration and durable documentation are being installed as SB-00.
-- No product-code implementation has begun under the new workflow yet.
+- The durable Shipping Buddy v0.2 goal is active under the project-local Sol-manager/Luna-executor workflow.
+- The private `AshbyCollado/shippingbuddy` baseline, rollback tag, milestone, issue tree, and passing GitHub Actions baseline exist.
+- SB-02 / issue #3 replaces the monolithic planner entry with `/plan/item`, `/plan/protection`, `/plan/source`, `/plan/fit`, and `/plan/build` routes plus a versioned, validated, local persisted draft.
+- Luna owns production implementation; an independent tester owns tests; Sol owns architecture, review, Git, issues, and release gates.
+- SB-02 evidence: typecheck/build pass; full lint pass; 39 unit tests pass; 4 Playwright flows pass; live desktop and 320 px walkthrough passes with reload persistence, no horizontal overflow, no pre-Build canvas, and no console warnings/errors.
 
 ## Next entry point
 
-Validate SB-00 files/config, establish and push the recoverable private GitHub baseline, create the v0.2 milestone/issues, then give Luna the first guided-route/local-persistence package. Sol remains the manager and reviewer.
+Commit and push issue #3, allow its CI gate to pass, merge it into `main`, then create the issue #4 branch and give Luna the bounded SB-03 item-profile/protection/measurement package. Preserve the Build route as a renderer boundary until the later Three.js issues.
