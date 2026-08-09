@@ -17,7 +17,7 @@ Complete Shipping Buddy v0.2 Guided Box Transformer under the Sol-manager/Luna-e
 | SB-02 | Guided route shell and versioned local persistence | Complete | 39 unit tests, 4 Playwright flows, lint/build, live desktop/mobile walkthrough |
 | SB-03 | Item profiles, protection, measurements, fit explanations | Complete | 48 unit tests, 5 Playwright flows, lint/build, live 16-inch/mobile walkthrough |
 | SB-04 | Saved box inventory and method ranking | Complete | 58 unit tests, 7 Playwright flows, lint/build, live desktop/390/320 walkthrough |
-| SB-05 | Height cut-down and corner reform | Pending | Geometry/playbook fixtures and instructions |
+| SB-05 | Height cut-down and corner reform | Complete | 62 unit tests, lint/build, exact geometry/playbook boundary fixtures |
 | SB-06 | Quick shrink and precise rebuild | Pending | Separate recipes with feasibility diagnostics |
 | SB-07 | Telescope and splice | Pending | Distinct plans, overlap/clearance math, warnings |
 | SB-08 | Canonical polygon FoldNet and exports | Pending | Concave triangulation, SVG, hinge/pose diagnostics |
@@ -30,4 +30,4 @@ Complete Shipping Buddy v0.2 Guided Box Transformer under the Sol-manager/Luna-e
 
 ## Current package
 
-SB-03 is merged through PR #17 after two passing CI runs. SB-04 / GitHub issue #5 is implementation- and verification-complete on branch `codex/issue-5-box-inventory-ranking`: Luna delivered the bounded production package, an independent tester verified old-v1 migration, conversion boundaries, inventory persistence, catalog selection, exact-fit/rejection fixtures, and responsive acceptance, and Sol completed full lint/build plus a live browser walkthrough. The branch is ready for PR/CI/merge; SB-05 / issue #6 begins only after that merge.
+SB-04 / GitHub issue #5 is merged through PR #18 after both push and pull-request CI runs passed. SB-05 / issue #6 is implementation- and verification-complete on branch `codex/issue-6-height-corner-reform`: Luna delivered immutable height-cut-down and shrink-only corner-reform prototype plans, Sol caught and returned the untouched-axis allowance defect, and an independent tester verified exact stock boundaries, diagnostics, scalar operations, playbook order, and deep immutability. Full tests/lint/build pass; the branch is ready for PR/CI/merge before SB-06 / issue #7 begins.
