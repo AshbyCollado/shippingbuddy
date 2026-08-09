@@ -1,5 +1,5 @@
 import {describe, expect, it} from "vitest";
-import {ceilToQuarterInchMm, formatLengthInput, inchesToMm, nextLengthCheckpoint, parseDraft, QUARTER_INCH_MM} from "./measurements";
+import {ceilToLengthCheckpointMm, ceilToQuarterInchMm, formatLengthInput, inchesToMm, nextLengthCheckpoint, parseDraft, QUARTER_INCH_MM} from "./measurements";
 
 describe("customer measurement policy", () => {
   it("keeps clean inch defaults and quarter checkpoints", () => {
@@ -29,5 +29,13 @@ describe("customer measurement policy", () => {
     expect(ceilToQuarterInchMm(62.44 * 25.4)).toBeCloseTo(62.5 * 25.4, 5);
     expect(ceilToQuarterInchMm(QUARTER_INCH_MM)).toBe(QUARTER_INCH_MM);
     expect(ceilToQuarterInchMm(49.57 * 25.4)).toBeGreaterThan(49.57 * 25.4);
+  });
+
+  it("normalizes typed lengths upward without advancing an aligned floating-point checkpoint", () => {
+    expect(ceilToLengthCheckpointMm(inchesToMm(14.01), "in")).toBe(inchesToMm(14.25));
+    expect(ceilToLengthCheckpointMm(14.01, "mm")).toBe(15);
+    expect(ceilToLengthCheckpointMm(inchesToMm(14.25) + 0.00000001, "in")).toBe(inchesToMm(14.25));
+    expect(nextLengthCheckpoint(inchesToMm(14), "in", 1)).toBe(inchesToMm(14.25));
+    expect(nextLengthCheckpoint(inchesToMm(14.25), "in", 1)).toBe(inchesToMm(14.5));
   });
 });

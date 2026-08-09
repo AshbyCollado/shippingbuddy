@@ -60,6 +60,15 @@ describe("planner draft persistence", () => {
     });
   });
 
+  it("synchronizes both tube diameter axes in the persisted draft", () => {
+    usePlannerStore.getState().setItemShape("CYLINDER_TUBE");
+    usePlannerStore.getState().setItemDimension("widthMm", 72);
+    expect(usePlannerStore.getState().draft.item.dimensions).toMatchObject({widthMm: 72, heightMm: 72});
+
+    usePlannerStore.getState().setItemDimension("heightMm", 88);
+    expect(usePlannerStore.getState().draft.item.dimensions).toMatchObject({widthMm: 88, heightMm: 88});
+  });
+
   it("removes invalid local storage rather than merging it", async () => {
     storage.setItem(PLANNER_STORAGE_KEY, "{bad json");
 

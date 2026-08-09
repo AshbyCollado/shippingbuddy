@@ -101,7 +101,8 @@ export function parseDraft(text: string, unit: DisplayUnit) {
   if (!normalized || normalized === "." || normalized === "-") return undefined;
   const value = Number(normalized);
   if (!Number.isFinite(value) || value < 0) return undefined;
-  return fromDisplayLength(value, unit);
+  // Preserve the entered precision until the surface commit applies its upward checkpoint.
+  return unit === "in" ? value * MM_PER_INCH : value;
 }
 
 export function parseWeightDraft(text: string, unit: DisplayUnit) {
@@ -131,6 +132,12 @@ export function nextWeightCheckpoint(value: number, unit: DisplayUnit, direction
 export function ceilToQuarterInchMm(valueMm: number) {
   if (!Number.isFinite(valueMm)) return valueMm;
   return cleanNumber(Math.ceil((valueMm - NUMERIC_EPSILON_MM) / QUARTER_INCH_MM) * QUARTER_INCH_MM, 2);
+}
+
+export function ceilToLengthCheckpointMm(valueMm: number, unit: DisplayUnit) {
+  if (!Number.isFinite(valueMm)) return valueMm;
+  const stepMm = lengthStepMm(unit);
+  return cleanNumber(Math.ceil((valueMm - NUMERIC_EPSILON_MM) / stepMm) * stepMm, 2);
 }
 
 export function isQuarterInch(valueMm: number) {

@@ -2,8 +2,8 @@
 
 import {useState} from "react";
 import QuantityField from "@/components/QuantityField";
-import {formatLengthDisplay} from "@/domain/measurements";
 import {PROTECTION_GOAL_MM, type Fragility, type ProtectionGoal} from "@/domain/geometry";
+import {formatLengthDisplay} from "@/domain/measurements";
 import {usePlannerStore} from "@/planner/store";
 import {QuestionHeader} from "./QuestionHeader";
 
@@ -14,6 +14,7 @@ const GOAL_COPY: Record<ProtectionGoal, string> = {
   4: "Very fragile",
   5: "Maximum padding",
 };
+
 const FRAGILITY: {value: Fragility; label: string}[] = [
   {value: "LOW", label: "Sturdy"},
   {value: "MODERATE", label: "Typical"},
@@ -31,7 +32,7 @@ export function ProtectionQuestion() {
 
   return (
     <>
-      <QuestionHeader eyebrow="Step 2 · Protection" title="How protected should it be?" description="Pick a simple goal. We translate it into the same padding on every side." />
+      <QuestionHeader eyebrow="Step 2 · Protection" title="How protected should it be?" description="Pick a simple goal. We apply that padding separately at every face of the item." />
       <fieldset className="question-group">
         <legend>Protection goal</legend>
         <div className="goal-scale">
@@ -41,7 +42,7 @@ export function ProtectionQuestion() {
             </button>
           ))}
         </div>
-        <p className="selection-explainer"><strong>Goal {draft.protectionGoal}</strong> adds {formatLengthDisplay(PROTECTION_GOAL_MM[draft.protectionGoal], draft.unit)} of padding on every side.</p>
+        <p className="selection-explainer"><strong>Goal {draft.protectionGoal}</strong> adds {formatLengthDisplay(PROTECTION_GOAL_MM[draft.protectionGoal], draft.unit)} at each face: left and right, front and back, top and bottom. Extra fit clearance is added separately.</p>
       </fieldset>
       <fieldset className="question-group">
         <legend>How easily can it break?</legend>
@@ -51,7 +52,7 @@ export function ProtectionQuestion() {
       </fieldset>
       <div className="advanced-clearance">
         <button type="button" aria-expanded={advanced} onClick={() => setAdvanced((value) => !value)}>Extra fit clearance (optional) <span>{advanced ? "−" : "+"}</span></button>
-        {advanced ? <div><p>Adds empty room beyond cushioning so the item is not squeezed. It is not protective padding.</p><QuantityField label="Total extra clearance" valueMm={clearance} unit={draft.unit} onCommit={setClearance} /></div> : null}
+        {advanced ? <div><p>Adds this total amount once to each inside axis, after both padding faces. It keeps the item from being squeezed; it is not protective padding.</p><QuantityField label="Total extra clearance per axis" valueMm={clearance} unit={draft.unit} onCommit={setClearance} /></div> : null}
       </div>
     </>
   );

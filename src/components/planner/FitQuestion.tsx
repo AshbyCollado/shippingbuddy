@@ -1,56 +1,51 @@
 "use client";
 
+import {assessFit, protectedEnvelopeBreakdown, protectedEnvelopeCopy} from "@/domain/fit";
 import {COMMON_BOXES} from "@/domain/geometry";
-import {formatDimensions, formatPair} from "@/domain/measurements";
-import {protectedDimensions} from "@/planner/draft";
+import {formatDimensions, formatLengthDisplay, formatPair} from "@/domain/measurements";
 import {usePlannerStore} from "@/planner/store";
 import {QuestionHeader} from "./QuestionHeader";
-
-function fits(required: [number, number, number], available: [number, number, number], allowRotation: boolean, keepUpright: boolean) {
-  const orientations: [number, number, number][] = [[required[0], required[1], required[2]]];
-  if (allowRotation) {
-    orientations.push([required[1], required[0], required[2]]);
-    if (!keepUpright) orientations.push(
-      [required[0], required[2], required[1]],
-      [required[2], required[0], required[1]],
-      [required[1], required[2], required[0]],
-      [required[2], required[1], required[0]],
-    );
-  }
-  return orientations.some((orientation) => orientation.every((value, index) => value <= available[index]));
-}
 
 export function FitQuestion() {
   const draft = usePlannerStore((state) => state.draft);
   const setAllowRotation = usePlannerStore((state) => state.setAllowRotation);
   const setKeepUpright = usePlannerStore((state) => state.setKeepUpright);
-  const required = protectedDimensions(draft);
-  const requiredTuple: [number, number, number] = [required.lengthMm, required.widthMm, required.heightMm];
   const selectedCommon = COMMON_BOXES.find((box) => box.id === draft.source.selectedCommonBoxId);
-  const available = draft.source.mode === "EXISTING_BOX" ? draft.source.existingBox : selectedCommon?.internalDimensions;
-  const fit = available ? fits(
-    requiredTuple,
-    [available.lengthMm, available.widthMm, available.heightMm],
-    draft.item.allowRotation,
-    draft.item.keepUpright,
-  ) : true;
+  const available = draft.source.mode === "EXISTING_BOX" ? draft.source.existingBox : draft.source.mode === "COMMON_BOX" ? selectedCommon?.internalDimensions : undefined;
+  const assessment = available ? assessFit(draft.item, available) : undefined;
+  const breakdown = protectedEnvelopeBreakdown(draft.item, assessment?.orientationId);
+  const explanation = protectedEnvelopeCopy(breakdown, draft.unit);
+  const required = breakdown.dimensions;
 
   return (
     <>
-      <QuestionHeader eyebrow="Step 4 · Fit" title="Check the space around your item" description="This is the item plus padding and optional empty clearance. Generated cutting geometry comes after review." />
+      <QuestionHeader eyebrow="Step 4 · Fit" title="Check the space around your item" description="The minimum inside size includes the item, padding at every face, and separate fit clearance." />
       <div className="fit-hero">
-        <span>Protected size needed</span>
-        <strong>{formatDimensions(requiredTuple, draft.unit)}</strong>
-        <small>Includes Goal {draft.protectionGoal} padding on every side</small>
+        <span>Minimum inside size</span>
+        <strong>{formatDimensions([required.lengthMm, required.widthMm, required.heightMm], draft.unit)}</strong>
+        <small>Goal {draft.protectionGoal} padding is applied per face; clearance is separate.</small>
+      </div>
+
+      <div className="fit-message is-neutral">
+        <strong>How each minimum is calculated</strong>
+        <p>{explanation.legend}.</p>
+        <div className="build-summary">
+          {explanation.axes.map((axis) => <div key={axis.axis}><span>{axis.label}</span><strong>{axis.formula}</strong></div>)}
+        </div>
       </div>
 
       {draft.source.mode === "FLAT_SHEET" ? (
         <div className="fit-message is-neutral"><strong>Flattened cardboard selected</strong><p>You entered {formatPair([draft.source.sheet.lengthMm, draft.source.sheet.widthMm], draft.unit)}. The build step calculates the cut layout and automatically expands an undersized sheet.</p></div>
-      ) : (
-        <div className={`fit-message ${fit ? "is-good" : "is-warning"}`}>
-          <strong>{fit ? "The protected item fits." : "This box is too small."}</strong>
-          <p>{fit ? "We will keep this choice for the build." : "Your choice stays selected. Go back to choose a larger box or reduce the protection goal."}</p>
+      ) : assessment ? (
+        <div className={`fit-message ${assessment.fits ? "is-good" : "is-warning"}`}>
+          <strong>{assessment.fits ? "The protected item fits." : "This box is too small."}</strong>
+          <p>Best allowed orientation: {assessment.orientationId}. It needs {formatDimensions([assessment.requiredDimensions.lengthMm, assessment.requiredDimensions.widthMm, assessment.requiredDimensions.heightMm], draft.unit)} inside.</p>
+          <p>{assessment.fits
+            ? `Extra room — length ${formatLengthDisplay(assessment.extraRoomMm.lengthMm, draft.unit)}, width ${formatLengthDisplay(assessment.extraRoomMm.widthMm, draft.unit)}, height ${formatLengthDisplay(assessment.extraRoomMm.heightMm, draft.unit)}.`
+            : `Short by — length ${formatLengthDisplay(assessment.deficitsMm.lengthMm, draft.unit)}, width ${formatLengthDisplay(assessment.deficitsMm.widthMm, draft.unit)}, height ${formatLengthDisplay(assessment.deficitsMm.heightMm, draft.unit)}. Your box choice stays selected.`}</p>
         </div>
+      ) : (
+        <div className="fit-message is-warning"><strong>Box measurements unavailable</strong><p>Go back and choose a standard box with known inside measurements.</p></div>
       )}
 
       <fieldset className="question-group">

@@ -1,15 +1,9 @@
 "use client";
 
 import QuantityField from "@/components/QuantityField";
-import {QuestionHeader} from "./QuestionHeader";
+import {ITEM_PROFILES, ITEM_PROFILE_DEFINITIONS} from "@/domain/itemProfiles";
 import {usePlannerStore} from "@/planner/store";
-
-const SHAPES = [
-  ["RECTANGULAR_BOX", "Box", "Square or rectangular sides"],
-  ["CYLINDER_TUBE", "Tube", "Round like a bottle or poster tube"],
-  ["ROUNDED_FORM", "Rounded", "Ball-shaped or softly rounded"],
-  ["L_U_MEASURED", "Irregular", "L- or U-shaped measured outline"],
-] as const;
+import {QuestionHeader} from "./QuestionHeader";
 
 export function ItemQuestion() {
   const draft = usePlannerStore((state) => state.draft);
@@ -17,6 +11,7 @@ export function ItemQuestion() {
   const setWeight = usePlannerStore((state) => state.setItemWeight);
   const setShape = usePlannerStore((state) => state.setItemShape);
   const {dimensions, shapeProfile, weightKg} = draft.item;
+  const profile = ITEM_PROFILE_DEFINITIONS[shapeProfile.kind];
 
   return (
     <>
@@ -24,22 +19,26 @@ export function ItemQuestion() {
       <fieldset className="question-group">
         <legend>Which shape is closest?</legend>
         <div className="choice-grid choice-grid-four">
-          {SHAPES.map(([kind, label, help]) => (
-            <button key={kind} type="button" className={`choice-card ${shapeProfile.kind === kind ? "is-selected" : ""}`} aria-pressed={shapeProfile.kind === kind} onClick={() => setShape(kind)}>
-              <strong>{label}</strong><span>{help}</span>
+          {ITEM_PROFILES.map((choice) => (
+            <button key={choice.kind} type="button" className={`choice-card ${shapeProfile.kind === choice.kind ? "is-selected" : ""}`} aria-pressed={shapeProfile.kind === choice.kind} onClick={() => setShape(choice.kind)}>
+              <strong>{choice.label}</strong><span>{choice.choiceHelp}</span>
             </button>
           ))}
         </div>
       </fieldset>
       <fieldset className="question-group">
         <legend>Item measurements</legend>
-        <p className="question-help">Use the longest side for length. The controls move in ¼-inch checkpoints.</p>
+        <p className="question-help">{profile.measurementHelp} Entries round upward to the next {draft.unit === "in" ? "¼ inch" : "whole millimetre"} checkpoint.</p>
         <div className="planner-field-grid">
-          <QuantityField label="Length" valueMm={dimensions.lengthMm} unit={draft.unit} minMm={0.01} onCommit={(value) => setDimension("lengthMm", value)} />
-          <QuantityField label="Width" valueMm={dimensions.widthMm} unit={draft.unit} minMm={0.01} onCommit={(value) => setDimension("widthMm", value)} />
-          <QuantityField label="Height" valueMm={dimensions.heightMm} unit={draft.unit} minMm={0.01} onCommit={(value) => setDimension("heightMm", value)} />
+          {profile.fields.map((field) => (
+            <div key={field.axis}>
+              <QuantityField label={field.label} valueMm={dimensions[field.axis]} unit={draft.unit} minMm={0.01} onCommit={(value) => setDimension(field.axis, value)} />
+              <small className="question-help">{field.help}</small>
+            </div>
+          ))}
           <QuantityField kind="weight" label="Weight" valueKg={weightKg} unit={draft.unit} onCommit={setWeight} />
         </div>
+        {profile.warning ? <div className="fit-message is-warning"><strong>Overall envelope only</strong><p>{profile.warning}</p></div> : null}
       </fieldset>
     </>
   );
