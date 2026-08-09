@@ -30,7 +30,7 @@ test("homepage CTA walks the question-only route shell to the review boundary", 
 
 test("answers survive browser Back and a reload", async ({page}) => {
   await page.goto("/plan/item");
-  const length = page.getByRole("spinbutton", {name: "Length in", exact: true});
+  const length = page.getByRole("spinbutton", {name: "Outside length in", exact: true});
   await expect(length).toBeEnabled();
   await length.fill("15");
   await length.press("Tab");
@@ -50,7 +50,39 @@ test("answers survive browser Back and a reload", async ({page}) => {
   await page.reload();
   await expect(page.getByRole("button", {name: /A standard box/})).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("link", {name: /Item/}).first().click();
-  await expect(page.getByRole("spinbutton", {name: "Length in", exact: true})).toHaveValue("15");
+  await expect(page.getByRole("spinbutton", {name: "Outside length in", exact: true})).toHaveValue("15");
+});
+
+test("shape-specific measurements preserve conservative envelopes and explain the 16-inch minimum", async ({page}) => {
+  await page.goto("/plan/item");
+  await page.getByRole("button", {name: /Tube/}).click();
+  await expect(page.getByRole("spinbutton", {name: "Tube length in", exact: true})).toBeVisible();
+  await expect(page.getByRole("spinbutton", {name: "Outside diameter in", exact: true})).toBeVisible();
+
+  await page.getByRole("button", {name: /Rounded/}).click();
+  await expect(page.getByRole("spinbutton", {name: "Longest diameter in", exact: true})).toBeVisible();
+  await expect(page.getByRole("spinbutton", {name: "Side diameter in", exact: true})).toBeVisible();
+  await expect(page.getByRole("spinbutton", {name: "Top diameter in", exact: true})).toBeVisible();
+
+  await page.getByRole("button", {name: /L \/ U shape/}).click();
+  await expect(page.getByText("Conservative fit: Shipping Buddy uses the overall rectangular envelope.", {exact: false})).toBeVisible();
+  await expect(page.getByRole("spinbutton", {name: "Overall length in", exact: true})).toBeVisible();
+
+  await page.getByRole("button", {name: /Box/}).click();
+  for (const label of ["Outside length in", "Outside width in", "Outside height in"]) {
+    const input = page.getByRole("spinbutton", {name: label, exact: true});
+    await input.fill("16");
+    await input.press("Tab");
+  }
+  await page.getByRole("link", {name: /Next/}).click();
+  await expect(page.getByRole("heading", {name: "How protected should it be?"})).toBeVisible();
+  await page.getByRole("link", {name: /Next/}).click();
+  await expect(page).toHaveURL(/\/plan\/source$/);
+  await page.getByRole("link", {name: /Next/}).click();
+  await expect(page).toHaveURL(/\/plan\/fit$/);
+  await expect(page.getByText("18.24 × 18.24 × 18.24 in", {exact: true})).toBeVisible();
+  await expect(page.getByText("16 + 1 + 1 + 0.24 = 18.24 in", {exact: true})).toHaveCount(3);
+  await expect(page.locator("canvas")).toHaveCount(0);
 });
 
 test("planner routes stay free of canvas/WebGL and expose hydration-safe server controls", async ({page, request}) => {

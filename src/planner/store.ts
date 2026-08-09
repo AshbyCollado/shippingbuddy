@@ -5,6 +5,7 @@ import {create} from "zustand";
 import {persist, type PersistStorage, type StorageValue} from "zustand/middleware";
 import {z} from "zod";
 import {PROTECTION_GOAL_MM, type Fragility, type ItemShapeKind, type ProtectionGoal, type WrapPatternId} from "@/domain/geometry";
+import {normalizeDimensionsForProfile, updateProfileDimension} from "@/domain/itemProfiles";
 import type {DisplayUnit} from "@/domain/measurements";
 import {
   createDefaultPlannerDraft,
@@ -107,6 +108,11 @@ function withTimestamp(draft: PlannerDraft, change: (current: PlannerDraft) => P
   return {...change(draft), updatedAt: new Date().toISOString()};
 }
 
+function normalizeDraftProfile(draft: PlannerDraft): PlannerDraft {
+  const kind = draft.item.shapeProfile.kind;
+  return {...draft, item: {...draft.item, dimensions: normalizeDimensionsForProfile(kind, draft.item.dimensions)}};
+}
+
 const cushioningForGoal = (goal: ProtectionGoal) => {
   const valueMm = PROTECTION_GOAL_MM[goal];
   return {
@@ -128,14 +134,21 @@ export const usePlannerStore = create<PlannerStore>()(persist(
     setItemDimension: (axis, valueMm) => set(({draft}) => ({
       draft: withTimestamp(draft, (current) => ({
         ...current,
-        item: {...current.item, dimensions: {...current.item.dimensions, [axis]: valueMm}},
+        item: {...current.item, dimensions: updateProfileDimension(current.item, axis, valueMm)},
       })),
     })),
     setItemWeight: (weightKg) => set(({draft}) => ({
       draft: withTimestamp(draft, (current) => ({...current, item: {...current.item, weightKg}})),
     })),
     setItemShape: (kind) => set(({draft}) => ({
-      draft: withTimestamp(draft, (current) => ({...current, item: {...current.item, shapeProfile: {kind}}})),
+      draft: withTimestamp(draft, (current) => ({
+        ...current,
+        item: {
+          ...current.item,
+          shapeProfile: {kind},
+          dimensions: normalizeDimensionsForProfile(kind, current.item.dimensions),
+        },
+      })),
     })),
     setFragility: (fragility) => set(({draft}) => ({
       draft: withTimestamp(draft, (current) => ({...current, item: {...current.item, fragility}})),
@@ -188,7 +201,7 @@ export const usePlannerStore = create<PlannerStore>()(persist(
     importDraft: (json) => {
       const parsed = parsePlannerDraftJson(json);
       if (!parsed.success) return {ok: false, message: "That file is not a valid Shipping Buddy draft."};
-      set({draft: {...parsed.data, updatedAt: new Date().toISOString()}});
+      set({draft: normalizeDraftProfile({...parsed.data, updatedAt: new Date().toISOString()})});
       return {ok: true};
     },
   }),
@@ -200,7 +213,7 @@ export const usePlannerStore = create<PlannerStore>()(persist(
     partialize: ({draft}) => ({draft}),
     merge: (persistedState, currentState) => {
       const parsed = PersistedPlannerStateSchema.safeParse(persistedState);
-      return parsed.success ? {...currentState, draft: parsed.data.draft} : currentState;
+      return parsed.success ? {...currentState, draft: normalizeDraftProfile(parsed.data.draft)} : currentState;
     },
     onRehydrateStorage: () => (state) => state?.finishHydration(),
   },

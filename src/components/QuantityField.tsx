@@ -3,6 +3,7 @@
 
 import {useEffect, useRef, useState} from "react";
 import {
+  ceilToLengthCheckpointMm,
   DisplayUnit,
   formatLengthInput,
   formatWeightInput,
@@ -47,8 +48,9 @@ function LengthField({label, valueMm, unit, minMm = 0, onCommit, onInvalid}: Len
     if (previousUnit.current !== unit) {
       const oldUnit = previousUnit.current;
       const parsed = dirty ? parseDraft(draft, oldUnit) : valueMm;
-      if (parsed !== undefined && parsed >= minMm) onCommit(parsed);
-      setDraft(formatLengthInput(parsed ?? valueMm, unit));
+      const normalized = dirty && parsed !== undefined ? ceilToLengthCheckpointMm(parsed, oldUnit) : parsed;
+      if (dirty && normalized !== undefined && normalized >= minMm) onCommit(normalized);
+      setDraft(formatLengthInput(normalized ?? valueMm, unit));
       setDirty(false);
       previousUnit.current = unit;
     } else if (!dirty) {
@@ -62,8 +64,9 @@ function LengthField({label, valueMm, unit, minMm = 0, onCommit, onInvalid}: Len
       onInvalid?.(label);
       return false;
     }
-    onCommit(parsed);
-    setDraft(formatLengthInput(parsed, unit));
+    const normalized = ceilToLengthCheckpointMm(parsed, unit);
+    onCommit(normalized);
+    setDraft(formatLengthInput(normalized, unit));
     setDirty(false);
     return true;
   };

@@ -1,6 +1,7 @@
 import {z} from "zod";
 import {inchesToMm, poundsToKg, type DisplayUnit} from "@/domain/measurements";
 import type {Dimensions3D, ItemInput, ProtectionGoal, WrapPatternId} from "@/domain/geometry";
+import {protectedEnvelopeBreakdown} from "@/domain/fit";
 
 export const PLANNER_DRAFT_SCHEMA_VERSION = 1 as const;
 export const PLANNER_STORAGE_KEY = "shipping-buddy:planner-draft:v1";
@@ -139,12 +140,7 @@ export function parsePlannerDraftJson(json: string) {
 }
 
 export function protectedDimensions(draft: Pick<PlannerDraft, "item">): Dimensions3D {
-  const {dimensions, cushioning, tolerance} = draft.item;
-  return {
-    lengthMm: dimensions.lengthMm + cushioning.leftMm + cushioning.rightMm + tolerance.lengthTotalMm,
-    widthMm: dimensions.widthMm + cushioning.frontMm + cushioning.backMm + tolerance.widthTotalMm,
-    heightMm: dimensions.heightMm + cushioning.bottomMm + cushioning.topMm + tolerance.heightTotalMm,
-  };
+  return protectedEnvelopeBreakdown(draft.item).dimensions;
 }
 
 // Compile-time guards keep persisted data aligned with the established domain contracts.

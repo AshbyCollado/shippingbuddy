@@ -15,7 +15,7 @@ Complete Shipping Buddy v0.2 Guided Box Transformer under the Sol-manager/Luna-e
 | SB-00 | Project-local manager/Luna workflow | Complete | Config, agent roles, durable docs, TOML validation, restart note |
 | SB-01 | Private GitHub baseline and issue roadmap | Complete | Initial commit/tag/push, passing CI, milestone, parent/child issues |
 | SB-02 | Guided route shell and versioned local persistence | Complete | 39 unit tests, 4 Playwright flows, lint/build, live desktop/mobile walkthrough |
-| SB-03 | Item profiles, protection, measurements, fit explanations | Active | Domain fixtures and 16-inch cube flow |
+| SB-03 | Item profiles, protection, measurements, fit explanations | Complete | 48 unit tests, 5 Playwright flows, lint/build, live 16-inch/mobile walkthrough |
 | SB-04 | Saved box inventory and method ranking | Pending | Fit/deficit/ranking tests and usable source UX |
 | SB-05 | Height cut-down and corner reform | Pending | Geometry/playbook fixtures and instructions |
 | SB-06 | Quick shrink and precise rebuild | Pending | Separate recipes with feasibility diagnostics |
@@ -30,4 +30,4 @@ Complete Shipping Buddy v0.2 Guided Box Transformer under the Sol-manager/Luna-e
 
 ## Current package
 
-SB-02 is complete on GitHub issue #3. Luna implemented the route shell and versioned local draft; an independent tester added persistence and customer-flow coverage; Sol rejected and corrected a test lint defect, then personally verified the customer path, reload persistence, 320 px no-overflow behavior, zero pre-Build canvases, and a clean console. Next action: commit/push/merge issue #3, then open SB-03 on issue #4 with Luna limited to item/profile/protection domain and UI integration.
+SB-03 / issue #4 is ready for commit on branch `codex/issue-4-item-protection`. Luna implemented the pure profile/protection/fit package; an independent tester exposed and pinned a floating-point checkpoint defect; Luna corrected it. Sol verified a 16-inch cube, exact 18-inch-box deficits, 320 px fit layout, no pre-Build canvas, and a clean console. Next action: push/merge the issue #4 PR after CI, then activate SB-04 / issue #5.

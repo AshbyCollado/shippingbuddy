@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import {COMMON_BOXES} from "@/domain/geometry";
-import {formatDimensions} from "@/domain/measurements";
-import {protectedDimensions} from "@/planner/draft";
+import {assessFit, protectedEnvelopeBreakdown} from "@/domain/fit";
+import {COMMON_BOXES, PROTECTION_GOAL_MM} from "@/domain/geometry";
+import {formatDimensions, formatLengthDisplay} from "@/domain/measurements";
 import {usePlannerStore} from "@/planner/store";
 import {QuestionHeader} from "./QuestionHeader";
 
@@ -11,17 +11,20 @@ const SOURCE_LABEL = {EXISTING_BOX: "Your existing box", COMMON_BOX: "A standard
 
 export function BuildBoundary() {
   const draft = usePlannerStore((state) => state.draft);
-  const required = protectedDimensions(draft);
   const selectedCommon = COMMON_BOXES.find((box) => box.id === draft.source.selectedCommonBoxId);
+  const available = draft.source.mode === "EXISTING_BOX" ? draft.source.existingBox : draft.source.mode === "COMMON_BOX" ? selectedCommon?.internalDimensions : undefined;
+  const assessment = available ? assessFit(draft.item, available) : undefined;
+  const protectedEnvelope = protectedEnvelopeBreakdown(draft.item, assessment?.orientationId);
+  const required = protectedEnvelope.dimensions;
   const sourceDetail = draft.source.mode === "COMMON_BOX" ? selectedCommon?.name : SOURCE_LABEL[draft.source.mode];
 
   return (
     <>
       <QuestionHeader eyebrow="Step 5 · Review" title="Ready to build your plan" description="Your answers are saved. This is the handoff from questions to the visual build instructions." />
       <div className="build-summary">
-        <div><span>Protected item</span><strong>{formatDimensions([required.lengthMm, required.widthMm, required.heightMm], draft.unit)}</strong></div>
+        <div><span>Minimum inside size</span><strong>{formatDimensions([required.lengthMm, required.widthMm, required.heightMm], draft.unit)}</strong></div>
         <div><span>Starting material</span><strong>{sourceDetail}</strong></div>
-        <div><span>Protection</span><strong>Goal {draft.protectionGoal}</strong></div>
+        <div><span>Protection</span><strong>Goal {draft.protectionGoal} · {formatLengthDisplay(PROTECTION_GOAL_MM[draft.protectionGoal], draft.unit)} per face; clearance separate</strong></div>
       </div>
       <div className="build-boundary-callout">
         <span aria-hidden="true">✓</span>
