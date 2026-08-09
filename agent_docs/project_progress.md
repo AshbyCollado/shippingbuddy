@@ -19,7 +19,7 @@ Complete Shipping Buddy v0.2 Guided Box Transformer under the Sol-manager/Luna-e
 | SB-04 | Saved box inventory and method ranking | Complete | 58 unit tests, 7 Playwright flows, lint/build, live desktop/390/320 walkthrough |
 | SB-05 | Height cut-down and corner reform | Complete | 62 unit tests, lint/build, exact geometry/playbook boundary fixtures |
 | SB-06 | Quick shrink and precise rebuild | Complete | 73 unit tests, lint/build, FEFCO-101 score spans, exact stock and style-rejection fixtures |
-| SB-07 | Telescope and splice | Pending | Distinct plans, overlap/clearance math, warnings |
+| SB-07 | Telescope and splice | Complete | 85 unit tests, lint/typecheck/build, exact FEFCO-03 topology/fit fixtures, push + PR CI |
 | SB-08 | Canonical polygon FoldNet and exports | Pending | Concave triangulation, SVG, hinge/pose diagnostics |
 | SB-09 | Exact tutorial renderer parity | Pending | Golden baseline screenshots and resource metrics |
 | SB-10 | Camera, hierarchy, and fold timeline | Pending | Centered bounds, two-axis orbit/reset, midpoint motion |
@@ -30,4 +30,4 @@ Complete Shipping Buddy v0.2 Guided Box Transformer under the Sol-manager/Luna-e
 
 ## Current package
 
-SB-05 / GitHub issue #6 is merged through PR #19 after both CI runs passed. SB-06 / issue #7 is implementation- and verification-complete on `codex/issue-7-horizontal-shrink-rebuild`: Luna delivered FEFCO-0201-only quick-overlap and precise-rebuild prototype plans; Sol caught and returned independent-end closure, FEFCO-0204 style, and score-center allowance defects; and an independent tester verified the corrected formulas and rejection boundaries. Full typecheck, lint, 73 unit tests, production build, diff check, and secret scan pass. FEFCO 0204 is never mapped to 0201 and is tracked as child issue #20 with its required per-flap geometry. Route UI, Three.js, and FoldNet remain untouched.
+SB-07 / GitHub issue #8 is verification-complete through PR #22 on `codex/issue-8-telescope-splice`; both the push run (`31327780877`) and pull-request run (`31327804750`) passed. Luna stalled without an implementation checkpoint after the bounded retries, so the workflow's single allowed `executor_sol` fallback completed only this production package; Sol retained architecture, standards review, integration, and Git ownership, while the independent tester owned fixtures. The package models purpose-built FEFCO-03 body/lid nesting plus separately labeled internal-nesting and external-sleeve prototypes. It requires explicit open-interface axial topology instead of applying a false two-wall conversion, safely diagnoses absent or invalid axis mappings, rejects unsupported/tape-only geometry, and emits immutable scalar plans with explicit map/check/mark/assemble/remeasure playbooks. Route UI, Three.js, and FoldNet remain untouched. Full typecheck, lint, 85 unit tests, production build, diff/secret scans, independent tests, and final read-only review pass.
