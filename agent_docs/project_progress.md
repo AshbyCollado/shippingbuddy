@@ -18,7 +18,7 @@ Complete Shipping Buddy v0.2 Guided Box Transformer under the Sol-manager/Luna-e
 | SB-03 | Item profiles, protection, measurements, fit explanations | Complete | 48 unit tests, 5 Playwright flows, lint/build, live 16-inch/mobile walkthrough |
 | SB-04 | Saved box inventory and method ranking | Complete | 58 unit tests, 7 Playwright flows, lint/build, live desktop/390/320 walkthrough |
 | SB-05 | Height cut-down and corner reform | Complete | 62 unit tests, lint/build, exact geometry/playbook boundary fixtures |
-| SB-06 | Quick shrink and precise rebuild | Pending | Separate recipes with feasibility diagnostics |
+| SB-06 | Quick shrink and precise rebuild | Complete | 73 unit tests, lint/build, FEFCO-101 score spans, exact stock and style-rejection fixtures |
 | SB-07 | Telescope and splice | Pending | Distinct plans, overlap/clearance math, warnings |
 | SB-08 | Canonical polygon FoldNet and exports | Pending | Concave triangulation, SVG, hinge/pose diagnostics |
 | SB-09 | Exact tutorial renderer parity | Pending | Golden baseline screenshots and resource metrics |
@@ -30,4 +30,4 @@ Complete Shipping Buddy v0.2 Guided Box Transformer under the Sol-manager/Luna-e
 
 ## Current package
 
-SB-04 / GitHub issue #5 is merged through PR #18 after both push and pull-request CI runs passed. SB-05 / issue #6 is implementation- and verification-complete on branch `codex/issue-6-height-corner-reform`: Luna delivered immutable height-cut-down and shrink-only corner-reform prototype plans, Sol caught and returned the untouched-axis allowance defect, and an independent tester verified exact stock boundaries, diagnostics, scalar operations, playbook order, and deep immutability. Full tests/lint/build pass; the branch is ready for PR/CI/merge before SB-06 / issue #7 begins.
+SB-05 / GitHub issue #6 is merged through PR #19 after both CI runs passed. SB-06 / issue #7 is implementation- and verification-complete on `codex/issue-7-horizontal-shrink-rebuild`: Luna delivered FEFCO-0201-only quick-overlap and precise-rebuild prototype plans; Sol caught and returned independent-end closure, FEFCO-0204 style, and score-center allowance defects; and an independent tester verified the corrected formulas and rejection boundaries. Full typecheck, lint, 73 unit tests, production build, diff check, and secret scan pass. FEFCO 0204 is never mapped to 0201 and is tracked as child issue #20 with its required per-flap geometry. Route UI, Three.js, and FoldNet remain untouched.
