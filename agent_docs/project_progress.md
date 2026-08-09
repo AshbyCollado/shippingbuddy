@@ -13,9 +13,9 @@ Complete Shipping Buddy v0.2 Guided Box Transformer under the Sol-manager/Luna-e
 | ID | Checkpoint | Status | Exit evidence |
 |---|---|---|---|
 | SB-00 | Project-local manager/Luna workflow | Complete | Config, agent roles, durable docs, TOML validation, restart note |
-| SB-01 | Private GitHub baseline and issue roadmap | Active | Initial commit/tag/push, CI, milestone, parent/child issues |
-| SB-02 | Guided route shell and versioned local persistence | Pending | Route/back/mobile flows and import/export tests |
-| SB-03 | Item profiles, protection, measurements, fit explanations | Pending | Domain fixtures and 16-inch cube flow |
+| SB-01 | Private GitHub baseline and issue roadmap | Complete | Initial commit/tag/push, passing CI, milestone, parent/child issues |
+| SB-02 | Guided route shell and versioned local persistence | Complete | 39 unit tests, 4 Playwright flows, lint/build, live desktop/mobile walkthrough |
+| SB-03 | Item profiles, protection, measurements, fit explanations | Active | Domain fixtures and 16-inch cube flow |
 | SB-04 | Saved box inventory and method ranking | Pending | Fit/deficit/ranking tests and usable source UX |
 | SB-05 | Height cut-down and corner reform | Pending | Geometry/playbook fixtures and instructions |
 | SB-06 | Quick shrink and precise rebuild | Pending | Separate recipes with feasibility diagnostics |
@@ -30,4 +30,4 @@ Complete Shipping Buddy v0.2 Guided Box Transformer under the Sol-manager/Luna-e
 
 ## Current package
 
-SB-01 is active. The project-local workflow is installed without global overwrites or deletion steps. Baseline validation passed on 2026-08-09: `pnpm typecheck`, `pnpm lint`, 32/32 Vitest tests, and `pnpm build`. Next action: create the initial commit/tag/private remote, push, create the v0.2 milestone/issues, then assign SB-02's first bounded implementation package to Luna.
+SB-02 is complete on GitHub issue #3. Luna implemented the route shell and versioned local draft; an independent tester added persistence and customer-flow coverage; Sol rejected and corrected a test lint defect, then personally verified the customer path, reload persistence, 320 px no-overflow behavior, zero pre-Build canvases, and a clean console. Next action: commit/push/merge issue #3, then open SB-03 on issue #4 with Luna limited to item/profile/protection domain and UI integration.
