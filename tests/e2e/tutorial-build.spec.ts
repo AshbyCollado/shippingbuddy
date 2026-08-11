@@ -150,7 +150,8 @@ async function dragCanvas(page: Page, canvas: Locator, start: readonly [number, 
   const to = point(end);
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
-  await page.mouse.move(to.x, to.y, {steps: 16});
+  // Four real pointer moves preserve the complete drag gesture while avoiding 16 demand-rendered high-detail frames per orbit.
+  await page.mouse.move(to.x, to.y, {steps: 4});
   await page.mouse.up();
 }
 
