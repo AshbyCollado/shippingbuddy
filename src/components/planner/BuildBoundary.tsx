@@ -238,7 +238,11 @@ export function BuildBoundary() {
       ) : null}
       {routedBuildPlan.kind === "CUT_AND_FOLD" &&
       routedBuildPlan.fitsSheet.fits ? (
-        <CutAndFoldPreview plan={routedBuildPlan.plan} />
+        <CutAndFoldPreview
+          plan={routedBuildPlan.plan}
+          enteredStock={routedBuildPlan.enteredStock}
+          unit={draft.unit}
+        />
       ) : null}
       <Link className="build-edit-link" href="/plan/item">
         Review my answers
