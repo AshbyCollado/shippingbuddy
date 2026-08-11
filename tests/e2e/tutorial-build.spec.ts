@@ -150,8 +150,8 @@ async function dragCanvas(page: Page, canvas: Locator, start: readonly [number, 
   const to = point(end);
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
-  // Four real pointer moves preserve the complete drag gesture while avoiding 16 demand-rendered high-detail frames per orbit.
-  await page.mouse.move(to.x, to.y, {steps: 4});
+  // One real pointer move after mouse-down preserves the OrbitControls gesture while avoiding interpolated high-detail demand renders.
+  await page.mouse.move(to.x, to.y, {steps: 1});
   await page.mouse.up();
 }
 
@@ -366,11 +366,15 @@ for (const fixture of [
 ] as const) {
   test(`${fixture.name} orbit, reset, polar limits, and progress canonicalization are stable`, async ({page}, testInfo) => {
     // This matrix performs six screenshots, four camera-idle polls, and three full orbit/reset passes.
-    // Hosted Ubuntu runners can complete the same deterministic sequence just beyond the default minute.
-    test.setTimeout(90_000);
+    // Hosted Ubuntu runners can need extended GPU settle time for the same deterministic sequence.
+    test.setTimeout(180_000);
     const browserErrors: string[] = [];
+    const failedResources: string[] = [];
     page.on("console", (message) => {
       if (message.type() === "error") browserErrors.push(`console: ${message.text()}`);
+    });
+    page.on("response", (response) => {
+      if (response.status() >= 400) failedResources.push(`${response.status()} ${response.url()}`);
     });
     page.on("pageerror", (error) => browserErrors.push(`page: ${error.message}`));
     await page.addInitScript(() => {
@@ -402,7 +406,7 @@ for (const fixture of [
     expect((await canvasRegion.screenshot()).equals(canonicalScreenshot)).toBe(true);
 
     await dragCanvas(page, canvas, [0.5, 0.5], [0.75, 0.5]);
-    await expect.poll(async () => wrappedAngleDifference((await readCamera(preview)).azimuth, canonical.azimuth)).toBeGreaterThan(0.25);
+    await expect.poll(async () => wrappedAngleDifference((await readCamera(preview)).azimuth, canonical.azimuth), {timeout: 25_000}).toBeGreaterThan(0.25);
     const horizontal = await readCamera(preview);
     expect(wrappedAngleDifference(horizontal.azimuth, canonical.azimuth)).toBeGreaterThan(0.25);
     expect(Math.abs(horizontal.polar - canonical.polar)).toBeLessThan(0.02);
@@ -415,7 +419,7 @@ for (const fixture of [
     expect((await canvasRegion.screenshot()).equals(canonicalScreenshot)).toBe(true);
 
     await dragCanvas(page, canvas, [0.5, 0.2], [0.5, 0.8]);
-    await expect.poll(async () => (await readCamera(preview)).polar).toBeCloseTo(0.05, 4);
+    await expect.poll(async () => (await readCamera(preview)).polar, {timeout: 25_000}).toBeCloseTo(0.05, 4);
     const polarMinimum = await readCamera(preview);
     expect(polarMinimum.polar).toBeCloseTo(0.05, 4);
     await canvasRegion.screenshot({path: testInfo.outputPath(`camera-${fixture.name}-polar-min.png`)});
@@ -423,7 +427,7 @@ for (const fixture of [
     await reset.click();
     await expect.poll(async () => JSON.stringify(cameraPose(await readCamera(preview)))).toBe(JSON.stringify(cameraPose(canonical)));
     await dragCanvas(page, canvas, [0.5, 0.8], [0.5, 0.2]);
-    await expect.poll(async () => (await readCamera(preview)).polar).toBeCloseTo(Math.PI / 2 - 0.035, 4);
+    await expect.poll(async () => (await readCamera(preview)).polar, {timeout: 25_000}).toBeCloseTo(Math.PI / 2 - 0.035, 4);
     const polarMaximum = await readCamera(preview);
     expect(polarMaximum.polar).toBeCloseTo(Math.PI / 2 - 0.035, 4);
     expect(polarMaximum.polar).toBeLessThan(Math.PI / 2);
@@ -432,7 +436,7 @@ for (const fixture of [
     await reset.click();
     await expect.poll(async () => JSON.stringify(cameraPose(await readCamera(preview)))).toBe(JSON.stringify(cameraPose(canonical)));
     await dragCanvas(page, canvas, [0.5, 0.5], [0.75, 0.5]);
-    await expect.poll(async () => wrappedAngleDifference((await readCamera(preview)).azimuth, canonical.azimuth)).toBeGreaterThan(0.25);
+    await expect.poll(async () => wrappedAngleDifference((await readCamera(preview)).azimuth, canonical.azimuth), {timeout: 25_000}).toBeGreaterThan(0.25);
     const userOrbit = await readCamera(preview);
     await setFoldPercentage(slider, 63);
     await expect(preview).toHaveAttribute("data-tutorial-progress", "0.630");
@@ -451,6 +455,7 @@ for (const fixture of [
     expect(cameraPose(await readCamera(preview))).toEqual(cameraPose(progressedCanonical));
     expect((await canvasRegion.screenshot()).equals(progressedScreenshot)).toBe(true);
     expect(await page.evaluate(() => (window as typeof window & {__tutorialCameraWebglLosses?: number}).__tutorialCameraWebglLosses ?? 0)).toBe(0);
+    if (browserErrors.length > 0) console.log(`Orbit HTTP failures: ${JSON.stringify(failedResources)}`);
     expect(browserErrors).toEqual([]);
   });
 }

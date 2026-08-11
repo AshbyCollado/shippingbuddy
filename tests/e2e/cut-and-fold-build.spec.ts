@@ -85,8 +85,12 @@ async function coloredToolAndTapePixels(page: Page, screenshot: Buffer) {
 
 test("flat-sheet Build owns the one canonical Canvas and exposes exact construction checkpoints", async ({page}, testInfo) => {
   const errors: string[] = [];
+  const failedResponses: string[] = [];
   page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
   page.on("pageerror", (error) => errors.push(error.message));
+  page.on("response", (response) => {
+    if (response.status() >= 400) failedResponses.push(`${response.status()} ${response.request().resourceType()} ${response.url()}`);
+  });
   await page.addInitScript(() => {
     const tracked = window as typeof window & {__cutAndFoldWebglLosses?: number};
     tracked.__cutAndFoldWebglLosses = 0;
@@ -135,6 +139,7 @@ test("flat-sheet Build owns the one canonical Canvas and exposes exact construct
   await mkdir(FINAL_SCREENSHOT_DIR, {recursive: true});
   for (const percent of [18, 30, 34, 54, 93, 100]) await copyFile(testInfo.outputPath(`cut-and-fold-${percent}.png`), join(FINAL_SCREENSHOT_DIR, `cut-and-fold-${percent}.png`));
   expect(await page.evaluate(() => (window as typeof window & {__cutAndFoldWebglLosses?: number}).__cutAndFoldWebglLosses ?? 0)).toBe(0);
+  expect(failedResponses).toEqual([]);
   expect(errors).toEqual([]);
 });
 

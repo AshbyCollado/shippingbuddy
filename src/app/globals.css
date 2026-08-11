@@ -69,4 +69,6 @@
 .cut-and-fold-preview-heading span{font-size:11px}.cut-and-fold-preview-heading strong{font-size:14px}.cut-and-fold-action-rail button{font-size:12px}.cut-and-fold-action-rail button>span{font-size:11px}.cut-and-fold-action-rail button[aria-current=step]::after{font-size:11px}.cut-and-fold-step-number{font-size:11px}.cut-and-fold-instruction-card h3{font-size:18px}.cut-and-fold-action-copy,.cut-and-fold-tools,.cut-and-fold-safety,.cut-and-fold-result{font-size:13px}.cut-and-fold-facts dt{font-size:11px}.cut-and-fold-facts dd{font-size:13px}.cut-and-fold-action-controls button,.cut-and-fold-controls>label,.cut-and-fold-button-row button{font-size:12px}
 
 /* Axe-confirmed secondary text contrast. */
-.planner-unit button,.planner-tool-button,.choice-card span,.input-shell em,.goal-scale button,.build-summary span,.source-mode-grid small,.source-advanced>button small,.toggle-list small{color:#5d6c67}
+.planner-unit button,.planner-tool-button,.choice-card span,.input-shell em,.goal-scale button,.build-summary span,.source-mode-grid small,.source-advanced>button small,.toggle-list small,.cut-and-fold-preview-heading span,.cut-and-fold-step-number,.cut-and-fold-facts dt{color:#5d6c67}
+.cut-and-fold-canvas-status{color:#52635c}
+.cut-and-fold-playback-row button:last-child{border-color:var(--green);background:var(--green);color:#fff}
