@@ -177,17 +177,19 @@ test("fit-first common cards do not silently replace an explicit too-small choic
   await expect(page.locator("canvas")).toHaveCount(0);
 });
 
-test("planner routes stay free of canvas/WebGL and expose hydration-safe server controls", async ({page, request}) => {
+test("question routes stay free of canvas/WebGL while a fitting Build route mounts one preview", async ({page, request}) => {
   const initialMarkup = await request.get("/plan/item");
   expect(await initialMarkup.text()).toContain('disabled=""');
 
-  for (const route of ["item", "protection", "source", "fit", "build"]) {
+  for (const route of ["item", "protection", "source", "fit"]) {
     await page.goto(`/plan/${route}`);
     await expect(page.locator("canvas")).toHaveCount(0);
   }
 
+  await page.goto("/plan/build");
   await expect(page.getByRole("heading", {name: "Ready to build your plan"})).toBeVisible();
-  await expect(page.getByText("visual build instructions", {exact: false})).toBeVisible();
+  await expect(page.locator("canvas")).toHaveCount(1);
+  await expect(page.locator(".tutorial-cardboard-preview")).toHaveAttribute("data-tutorial-panel-count", "12");
 });
 
 test("320px and 390px planner pages do not horizontally overflow", async ({page}) => {

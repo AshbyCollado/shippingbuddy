@@ -1,12 +1,18 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import {measurementFromSource, resolveBoxMeasurement} from "@/domain/boxInventory";
 import {assessFit, protectedEnvelopeBreakdown} from "@/domain/fit";
 import {COMMON_BOXES, PROTECTION_GOAL_MM} from "@/domain/geometry";
 import {formatDimensions, formatLengthDisplay} from "@/domain/measurements";
 import {usePlannerStore} from "@/planner/store";
 import {QuestionHeader} from "./QuestionHeader";
+
+const TutorialCardboardPreview = dynamic(() => import("@/components/tutorial-cardboard/TutorialCardboardPreview"), {
+  ssr: false,
+  loading: () => <div className="tutorial-cardboard-loading" role="status">Loading RSC fold preview...</div>,
+});
 
 const SOURCE_LABEL = {EXISTING_BOX: "Current box", COMMON_BOX: "A standard box", FLAT_SHEET: "Flattened cardboard"} as const;
 
@@ -45,6 +51,7 @@ export function BuildBoundary() {
       ) : (
         <div className="build-boundary-callout"><span aria-hidden="true">✓</span><div><strong>Measurements captured</strong><p>The geometry and animation workspace connects here, without putting the questions and 3D controls on the same crowded page.</p>{sourceWarning ? <p>{sourceWarning}</p> : null}</div></div>
       )}
+      {!sourceBlockedMessage && assessment?.fits && available && draft.source.mode !== "FLAT_SHEET" ? <TutorialCardboardPreview dimensions={available} /> : null}
       <Link className="build-edit-link" href="/plan/item">Review my answers</Link>
     </>
   );
