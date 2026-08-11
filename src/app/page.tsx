@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function HomePage() {
   return (
-    <main className="start-page">
+    <main className="start-page" data-app-id="shipping-buddy">
       <div className="start-shell">
         <header className="start-brand"><span aria-hidden="true">SB</span><strong>Shipping Buddy</strong></header>
         <section className="start-card">

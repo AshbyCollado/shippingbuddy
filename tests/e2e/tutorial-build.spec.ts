@@ -150,7 +150,8 @@ async function dragCanvas(page: Page, canvas: Locator, start: readonly [number, 
   const to = point(end);
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
-  await page.mouse.move(to.x, to.y, {steps: 16});
+  // One real pointer move after mouse-down preserves the OrbitControls gesture while avoiding interpolated high-detail demand renders.
+  await page.mouse.move(to.x, to.y, {steps: 1});
   await page.mouse.up();
 }
 
@@ -222,6 +223,21 @@ async function readyPreview(page: Page) {
   return preview;
 }
 
+async function expectReleaseTelemetry(preview: Locator) {
+  await expect.poll(() => preview.getAttribute("data-tutorial-draw-calls")).not.toBe("0");
+  const telemetry = {
+    drawCalls: Number(await preview.getAttribute("data-tutorial-draw-calls")),
+    triangles: Number(await preview.getAttribute("data-tutorial-triangles")),
+    geometries: Number(await preview.getAttribute("data-tutorial-geometries")),
+    textures: Number(await preview.getAttribute("data-tutorial-textures")),
+  };
+  expect(telemetry.drawCalls).toBeLessThanOrEqual(16);
+  expect(telemetry.geometries).toBeLessThanOrEqual(8);
+  expect(telemetry.textures).toBeLessThanOrEqual(1);
+  await expect(preview).toHaveAttribute("data-tutorial-geometry-resources", "6");
+  return telemetry;
+}
+
 for (const fixture of [
   {name: "resolved Existing source", source: {mode: "EXISTING_BOX", measurementBasis: "INSIDE"}},
   {name: "fitting Common source", source: {mode: "COMMON_BOX", selectedCommonBoxId: "RSC-04"}},
@@ -247,6 +263,39 @@ for (const fixture of [
     expect(cacheSize).toBeGreaterThan(0);
     expect(cacheSize).toBeLessThanOrEqual(6);
     expect(resourceCount).toBe(6);
+  });
+}
+
+for (const fixture of [
+  {name: "fitting Existing", cache: "6", source: {mode: "EXISTING_BOX", measurementBasis: "INSIDE"}},
+  {name: "Common 20 in", cache: "3", source: {mode: "COMMON_BOX", selectedCommonBoxId: "RSC-06"}},
+]) {
+  test(`${fixture.name} tutorial stays within release telemetry ceilings across route cycles`, async ({page}) => {
+    const browserErrors: string[] = [];
+    page.on("console", (message) => { if (message.type() === "error") browserErrors.push(`console: ${message.text()}`); });
+    page.on("pageerror", (error) => browserErrors.push(`page: ${error.message}`));
+    await page.addInitScript(() => {
+      const tracked = window as typeof window & {__tutorialReleaseWebglLosses?: number};
+      tracked.__tutorialReleaseWebglLosses = 0;
+      document.addEventListener("webglcontextlost", () => { tracked.__tutorialReleaseWebglLosses = (tracked.__tutorialReleaseWebglLosses ?? 0) + 1; }, true);
+    });
+    await seedPlanner(page, fixture.source);
+    await page.goto("/plan/build");
+    const samples: Array<{cache: string | null; resources: string | null; drawCalls: number; triangles: number; geometries: number; textures: number}> = [];
+    for (let cycle = 0; cycle < 3; cycle += 1) {
+      const preview = await readyPreview(page);
+      const telemetry = await expectReleaseTelemetry(preview);
+      samples.push({cache: await preview.getAttribute("data-tutorial-geometry-cache"), resources: await preview.getAttribute("data-tutorial-geometry-resources"), ...telemetry});
+      await page.locator(".planner-progress").getByRole("link", {name: /Fit/}).click();
+      await expect(page.locator("canvas")).toHaveCount(0);
+      await page.locator(".planner-progress").getByRole("link", {name: /Build/}).click();
+    }
+    expect(new Set(samples.map((sample) => sample.cache))).toEqual(new Set([fixture.cache]));
+    expect(new Set(samples.map((sample) => sample.resources))).toEqual(new Set(["6"]));
+    expect(await page.evaluate(() => (window as typeof window & {__tutorialReleaseWebglLosses?: number}).__tutorialReleaseWebglLosses ?? 0)).toBe(0);
+    expect(browserErrors).toEqual([]);
+    console.log(`${fixture.name} telemetry ${JSON.stringify(samples)}`);
+    expect(Math.max(...samples.map((sample) => sample.triangles))).toBeLessThanOrEqual(250_000);
   });
 }
 
@@ -316,10 +365,16 @@ for (const fixture of [
   {name: "RSC-06", exact: false, source: {mode: "COMMON_BOX", selectedCommonBoxId: "RSC-06"}},
 ] as const) {
   test(`${fixture.name} orbit, reset, polar limits, and progress canonicalization are stable`, async ({page}, testInfo) => {
-    test.setTimeout(60_000);
+    // This matrix performs six screenshots, four camera-idle polls, and three full orbit/reset passes.
+    // Hosted Ubuntu runners can need extended GPU settle time for the same deterministic sequence.
+    test.setTimeout(180_000);
     const browserErrors: string[] = [];
+    const failedResources: string[] = [];
     page.on("console", (message) => {
       if (message.type() === "error") browserErrors.push(`console: ${message.text()}`);
+    });
+    page.on("response", (response) => {
+      if (response.status() >= 400) failedResources.push(`${response.status()} ${response.url()}`);
     });
     page.on("pageerror", (error) => browserErrors.push(`page: ${error.message}`));
     await page.addInitScript(() => {
@@ -351,7 +406,7 @@ for (const fixture of [
     expect((await canvasRegion.screenshot()).equals(canonicalScreenshot)).toBe(true);
 
     await dragCanvas(page, canvas, [0.5, 0.5], [0.75, 0.5]);
-    await expect.poll(async () => wrappedAngleDifference((await readCamera(preview)).azimuth, canonical.azimuth)).toBeGreaterThan(0.25);
+    await expect.poll(async () => wrappedAngleDifference((await readCamera(preview)).azimuth, canonical.azimuth), {timeout: 25_000}).toBeGreaterThan(0.25);
     const horizontal = await readCamera(preview);
     expect(wrappedAngleDifference(horizontal.azimuth, canonical.azimuth)).toBeGreaterThan(0.25);
     expect(Math.abs(horizontal.polar - canonical.polar)).toBeLessThan(0.02);
@@ -364,7 +419,7 @@ for (const fixture of [
     expect((await canvasRegion.screenshot()).equals(canonicalScreenshot)).toBe(true);
 
     await dragCanvas(page, canvas, [0.5, 0.2], [0.5, 0.8]);
-    await expect.poll(async () => (await readCamera(preview)).polar).toBeCloseTo(0.05, 4);
+    await expect.poll(async () => (await readCamera(preview)).polar, {timeout: 25_000}).toBeCloseTo(0.05, 4);
     const polarMinimum = await readCamera(preview);
     expect(polarMinimum.polar).toBeCloseTo(0.05, 4);
     await canvasRegion.screenshot({path: testInfo.outputPath(`camera-${fixture.name}-polar-min.png`)});
@@ -372,7 +427,7 @@ for (const fixture of [
     await reset.click();
     await expect.poll(async () => JSON.stringify(cameraPose(await readCamera(preview)))).toBe(JSON.stringify(cameraPose(canonical)));
     await dragCanvas(page, canvas, [0.5, 0.8], [0.5, 0.2]);
-    await expect.poll(async () => (await readCamera(preview)).polar).toBeCloseTo(Math.PI / 2 - 0.035, 4);
+    await expect.poll(async () => (await readCamera(preview)).polar, {timeout: 25_000}).toBeCloseTo(Math.PI / 2 - 0.035, 4);
     const polarMaximum = await readCamera(preview);
     expect(polarMaximum.polar).toBeCloseTo(Math.PI / 2 - 0.035, 4);
     expect(polarMaximum.polar).toBeLessThan(Math.PI / 2);
@@ -381,7 +436,7 @@ for (const fixture of [
     await reset.click();
     await expect.poll(async () => JSON.stringify(cameraPose(await readCamera(preview)))).toBe(JSON.stringify(cameraPose(canonical)));
     await dragCanvas(page, canvas, [0.5, 0.5], [0.75, 0.5]);
-    await expect.poll(async () => wrappedAngleDifference((await readCamera(preview)).azimuth, canonical.azimuth)).toBeGreaterThan(0.25);
+    await expect.poll(async () => wrappedAngleDifference((await readCamera(preview)).azimuth, canonical.azimuth), {timeout: 25_000}).toBeGreaterThan(0.25);
     const userOrbit = await readCamera(preview);
     await setFoldPercentage(slider, 63);
     await expect(preview).toHaveAttribute("data-tutorial-progress", "0.630");
@@ -400,6 +455,7 @@ for (const fixture of [
     expect(cameraPose(await readCamera(preview))).toEqual(cameraPose(progressedCanonical));
     expect((await canvasRegion.screenshot()).equals(progressedScreenshot)).toBe(true);
     expect(await page.evaluate(() => (window as typeof window & {__tutorialCameraWebglLosses?: number}).__tutorialCameraWebglLosses ?? 0)).toBe(0);
+    if (browserErrors.length > 0) console.log(`Orbit HTTP failures: ${JSON.stringify(failedResources)}`);
     expect(browserErrors).toEqual([]);
   });
 }

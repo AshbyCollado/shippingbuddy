@@ -7,11 +7,14 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "launch": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/Start-ShippingBuddy.ps1",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test --grep-invert @performance",
+    "test:perf": "playwright test tests/e2e/performance.spec.ts",
+    "test:launcher": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/test-production-launcher.ps1"
   },
   "dependencies": {
     "@react-three/drei": "10.7.7",
@@ -25,6 +28,7 @@
     "zustand": "5.0.14"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.12.1",
     "@eslint/js": "9.39.1",
     "@playwright/test": "1.62.1",
     "@types/node": "24.13.1",
