@@ -5,17 +5,18 @@ import {expect, test, type Locator, type Page} from "@playwright/test";
 
 const STORAGE_KEY = "shipping-buddy:planner-draft:v1";
 const FINAL_SCREENSHOT_DIR = join(tmpdir(), "shipping-buddy-sb11c2t");
+const INSTRUCTION_SCREENSHOT_DIR = join(tmpdir(), "shipping-buddy-issue13t");
 
-function persistedDraft(source: Record<string, unknown> = {}, item: Record<string, unknown> = {}) {
-  return {state: {draft: {schemaVersion: 1, draftId: "cut-and-fold-e2e", updatedAt: "2026-08-11T00:00:00.000Z", unit: "mm",
+function persistedDraft(source: Record<string, unknown> = {}, item: Record<string, unknown> = {}, unit: "mm" | "in" = "mm") {
+  return {state: {draft: {schemaVersion: 1, draftId: "cut-and-fold-e2e", updatedAt: "2026-08-11T00:00:00.000Z", unit,
     item: {dimensions: {lengthMm: 356, widthMm: 330, heightMm: 305}, shapeProfile: {kind: "RECTANGULAR_BOX"}, weightKg: 3.2, fragility: "MODERATE", cushioning: {leftMm: 0, rightMm: 0, frontMm: 0, backMm: 0, bottomMm: 0, topMm: 0}, tolerance: {lengthTotalMm: 0, widthTotalMm: 0, heightTotalMm: 0}, allowRotation: true, keepUpright: false, ...item},
     protectionGoal: 2,
     source: {mode: "FLAT_SHEET", existingBox: {lengthMm: 508, widthMm: 482.6, heightMm: 457.2}, measurementBasis: "INSIDE", selectedCommonBoxId: "RSC-04", sheet: {lengthMm: 962, widthMm: 1360}, pattern: "WRAP_BOX_V1", ...source},
   }, savedBoxes: []}, version: 1};
 }
 
-async function seed(page: Page, source: Record<string, unknown> = {}, item: Record<string, unknown> = {}) {
-  const stored = persistedDraft(source, item);
+async function seed(page: Page, source: Record<string, unknown> = {}, item: Record<string, unknown> = {}, unit: "mm" | "in" = "mm") {
+  const stored = persistedDraft(source, item, unit);
   await page.addInitScript(({key, value}) => window.localStorage.setItem(key, JSON.stringify(value)), {key: STORAGE_KEY, value: stored});
 }
 
@@ -93,7 +94,7 @@ test("flat-sheet Build owns the one canonical Canvas and exposes exact construct
   });
   await seed(page); await page.goto("/plan/build");
   const preview = await ready(page);
-  const slider = page.getByRole("slider", {name: "Construction checkpoint"});
+  const slider = page.getByRole("slider", {name: "Fine animation position"});
   const canvas = page.locator(".cut-and-fold-canvas");
   const checkpoints = [
     [0, "reveal"], [18, "scores"], [22, "cuts"], [26, "cuts"], [30, "cutting"], [34, "cutting"], [38, "scrap"], [41, "scrap"], [44, "tabs"], [54, "walls"], [72, "top"], [90, "seal"], [93, "seal"], [97, "present"], [100, "present"],
@@ -139,7 +140,7 @@ test("flat-sheet Build owns the one canonical Canvas and exposes exact construct
 
 test("construction camera refits, clamps, resets, stays stable, and releases bounded resources on route cycles", async ({page}) => {
   await seed(page); await page.goto("/plan/build"); const preview = await ready(page);
-  const slider = page.getByRole("slider", {name: "Construction checkpoint"}); const canvas = page.locator(".cut-and-fold-canvas canvas"); const reset = page.getByRole("button", {name: "Reset view"});
+  const slider = page.getByRole("slider", {name: "Fine animation position"}); const canvas = page.locator(".cut-and-fold-canvas canvas"); const reset = page.getByRole("button", {name: "Reset view"});
   for (const percent of [0, 44, 54, 62, 100]) {
     await setPercent(slider, percent);
     await expect(preview).toHaveAttribute("data-construction-camera-mode", percent <= 44 ? "TOP_DOWN" : percent >= 62 ? "THREE_QUARTER" : "TRANSITION");
@@ -164,4 +165,66 @@ test("non-buildable sources and question routes remain Canvas-free with factual 
   ] as const;
   for (const [source, item, message] of blocked) { await seed(page, source, item); await page.goto("/plan/build"); await expect(page.locator("canvas")).toHaveCount(0); await expect(page.locator(".cut-and-fold-preview, .tutorial-cardboard-preview")).toHaveCount(0); await expect(page.getByText(new RegExp(message, "i"))).toBeVisible(); }
   for (const width of [320, 390]) { await page.setViewportSize({width, height: 800}); await seed(page); await page.goto("/plan/build"); const sizes = await page.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]); expect(sizes[0]).toBeLessThanOrEqual(sizes[1]); }
+});
+
+test("flat-sheet instruction rail pauses, navigates, plays canonical actions, and announces changes", async ({page}, testInfo) => {
+  test.setTimeout(35_000);
+  await seed(page); await page.goto("/plan/build");
+  const preview = await ready(page);
+  const rail = page.getByRole("navigation", {name: "Build actions"});
+  const slider = page.getByRole("slider", {name: "Fine animation position"});
+  const card = page.locator(".cut-and-fold-instruction-card");
+  const canvas = page.locator(".cut-and-fold-canvas");
+  await expect(rail.getByRole("button")).toHaveCount(7);
+  await expect(preview).toHaveAttribute("data-construction-action", "playbook:VERIFY");
+  await expect(preview).toHaveAttribute("data-construction-playback", "PAUSED");
+  await expect(rail.getByRole("button", {name: /Check the sheet/})).toHaveAttribute("aria-current", "step");
+  await expect(card).toContainText("Step 1 of 7"); await expect(card).toContainText("Tape measure, Pencil");
+  await expect(card).toContainText("Safety check:"); await expect(card).toContainText("What you should see:");
+  await expect(card).toContainText("962 x 1360 mm");
+
+  await setPercent(slider, 22); await expect(preview).toHaveAttribute("data-construction-action", "playbook:CUT");
+  await expect(card).toContainText("Cutting mat, Metal straightedge, Utility knife");
+  await expect(page.locator(".cut-and-fold-live")).toContainText("Step 3: Cut the generated outline");
+  await rail.getByRole("button", {name: /Fold the tabs/}).press("Enter");
+  await expect(preview).toHaveAttribute("data-construction-progress", "0.440"); await expect(preview).toHaveAttribute("data-construction-action", "playbook:FOLD");
+  await page.getByRole("button", {name: "Previous action"}).click(); await expect(preview).toHaveAttribute("data-construction-action", "playbook:SCRAP");
+  await page.getByRole("button", {name: "Next action"}).click(); await expect(preview).toHaveAttribute("data-construction-action", "playbook:FOLD");
+
+  await rail.getByRole("button", {name: /Check the sheet/}).click();
+  await page.getByRole("button", {name: "Play this step"}).click(); await expect(preview).toHaveAttribute("data-construction-playback", "STEP");
+  await expect.poll(() => preview.getAttribute("data-construction-progress"), {timeout: 3_000}).toBe("0.140");
+  await expect(preview).toHaveAttribute("data-construction-playback", "PAUSED");
+  await page.getByRole("button", {name: "Autoplay build"}).click(); await expect(preview).toHaveAttribute("data-construction-playback", "AUTOPLAY");
+  await expect.poll(() => preview.getAttribute("data-construction-progress"), {timeout: 12_000}).toBe("1.000");
+  await expect(page.getByRole("button", {name: "Replay from start"})).toBeVisible();
+  await setPercent(slider, 90); await expect(preview).toHaveAttribute("data-construction-playback", "PAUSED");
+  await page.getByRole("button", {name: "Reset view"}).click(); await expect(preview).toHaveAttribute("data-construction-playback", "PAUSED");
+
+  await mkdir(INSTRUCTION_SCREENSHOT_DIR, {recursive: true});
+  for (const [name, button] of [["verify", /Check the sheet/], ["cut", /Cut the generated outline/], ["fold", /Fold the tabs/], ["seal", /Tape the centre/], ["remeasure", /Remeasure the finished/]] as const) {
+    await rail.getByRole("button", {name: button}).click();
+    const path = testInfo.outputPath(`instruction-${name}.png`);
+    await canvas.screenshot({path}); await copyFile(path, join(INSTRUCTION_SCREENSHOT_DIR, `instruction-${name}.png`));
+  }
+  for (const width of [320, 390]) {
+    await page.setViewportSize({width, height: 800});
+    const pageWidth = await page.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]);
+    expect(pageWidth[0]).toBeLessThanOrEqual(pageWidth[1]);
+    const railWidths = await rail.evaluate((element) => [element.scrollWidth, element.clientWidth]);
+    expect(railWidths[0]).toBeGreaterThan(railWidths[1]);
+    await rail.getByRole("button", {name: /Remeasure the finished/}).scrollIntoViewIfNeeded();
+    await expect(rail.getByRole("button", {name: /Remeasure the finished/})).toBeVisible();
+  }
+  await expect(preview).toHaveAttribute("data-construction-geometry-cache", "15"); await expect(preview).toHaveAttribute("data-construction-live-references", "15");
+});
+
+test("reduced motion and assembly previews keep instruction controls scoped to flat sheets", async ({page, context}) => {
+  await page.emulateMedia({reducedMotion: "reduce"}); await seed(page); await page.goto("/plan/build");
+  const preview = await ready(page); await expect(preview).toHaveAttribute("data-construction-reduced-motion", "true");
+  await page.getByRole("button", {name: "Autoplay build"}).click(); await expect(preview).toHaveAttribute("data-construction-progress", "1.000");
+  const existing = await context.newPage(); await seed(existing, {mode: "EXISTING_BOX", measurementBasis: "INSIDE"}); await existing.goto("/plan/build");
+  await expect(existing.locator(".tutorial-cardboard-preview")).toBeVisible(); await expect(existing.getByRole("navigation", {name: "Build actions"})).toHaveCount(0);
+  const common = await context.newPage(); await seed(common, {mode: "COMMON_BOX", selectedCommonBoxId: "RSC-04"}); await common.goto("/plan/build");
+  await expect(common.locator(".tutorial-cardboard-preview")).toBeVisible(); await expect(common.getByRole("navigation", {name: "Build actions"})).toHaveCount(0);
 });
