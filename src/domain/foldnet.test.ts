@@ -53,6 +53,26 @@ function simpleNet() {
       points: [{xMm: 0, yMm: -2}, {xMm: 10, yMm: -2}, {xMm: 10, yMm: -1}, {xMm: 0, yMm: -1}],
       exitDirection: [0, -1],
     }],
+    seams: [],
+    orientation,
+  });
+}
+
+function scrapReferenceNet() {
+  return foldNetFromRectangles({
+    rectangles: [
+      {id: "bottom", xMm: 0, yMm: 0, widthMm: 10, heightMm: 10, role: "PANEL"},
+    ],
+    cuts: [
+      {id: "release-horizontal", kind: "boundary", from: {xMm: 0, yMm: 0}, to: {xMm: 10, yMm: 0}},
+      {id: "release-vertical", kind: "boundary", from: {xMm: 10, yMm: -2}, to: {xMm: 10, yMm: 0}},
+    ],
+    scrapRegions: [{
+      id: "two-cut-scrap",
+      points: [{xMm: 0, yMm: -2}, {xMm: 10, yMm: -2}, {xMm: 10, yMm: 0}, {xMm: 0, yMm: 0}],
+      exitDirection: [0, -1],
+    }],
+    seams: [],
     orientation,
   });
 }
@@ -64,7 +84,7 @@ function emptyPlaybook(faceIds: readonly string[]): readonly FoldNetPlaybookStep
     {code: "CUT", sequence: 2, label: "Cut", cutIds: []},
     {code: "SCRAP", sequence: 3, label: "Scrap", scrapIds: []},
     {code: "FOLD", sequence: 4, label: "Fold", creaseIds: []},
-    {code: "SEAL", sequence: 5, label: "Seal", faceIds: []},
+    {code: "SEAL", sequence: 5, label: "Seal", seamIds: []},
     {code: "REMEASURE", sequence: 6, label: "Remeasure"},
   ];
 }
@@ -79,6 +99,7 @@ function polygonNet(points: readonly (readonly [number, number])[], order = poin
     scores: [],
     cuts: [],
     scraps: [],
+    seams: [],
     creases: [],
     steps: [],
     playbook: emptyPlaybook(["shape"]),
@@ -128,6 +149,7 @@ describe("canonical fold-net adapter and projections", () => {
       ...first.scores.map(({id}) => id),
       ...first.cuts.map(({id}) => id),
       ...first.scraps.map(({id}) => id),
+      ...first.seams.map(({id}) => id),
       ...first.creases.map(({id}) => id),
     ];
 
@@ -183,6 +205,102 @@ describe("fold-net validation diagnostics", () => {
     validationWithCodes({...base, scraps: [{...scrap, vertexIds: [...scrap.vertexIds.slice(0, -1), "missing-scrap-vertex"]}]}, ["MISSING_SCRAP_ENDPOINT"]);
   });
 
+  it("requires every scrap to retain its complete canonical cut order", () => {
+    const base = scrapReferenceNet();
+    const scrap = base.scraps[0];
+    expect(scrap.cutIds).toEqual(["release-horizontal", "release-vertical"]);
+    expect(validateFoldNet(base)).toMatchObject({valid: true, diagnosticCodes: []});
+
+    const variants: FoldNetCandidate[] = [
+      {...base, scraps: [{...scrap, cutIds: undefined} as unknown as typeof scrap]},
+      {...base, scraps: [{...scrap, cutIds: []}]},
+      {...base, scraps: [{...scrap, cutIds: [...scrap.cutIds].reverse()}]},
+      {...base, scraps: [{...scrap, cutIds: [scrap.cutIds[0], scrap.cutIds[0]]}]},
+      {...base, scraps: [{...scrap, cutIds: [scrap.cutIds[0], "unknown-cut"]}]},
+    ];
+    variants.forEach((candidate) =>
+      validationWithCodes(candidate, ["INVALID_SCRAP_CUT_REFERENCE"]),
+    );
+  });
+
+  it("distinguishes missing seam endpoints from existing points off the declared face", () => {
+    const base = fixturePlan().foldNet;
+    const seam = base.seams[0];
+    const missing = validationWithCodes({
+      ...base,
+      seams: [{
+        ...seam,
+        matingEdges: [
+          {...seam.matingEdges[0], fromVertexId: "missing-seam-vertex"},
+          seam.matingEdges[1],
+        ],
+      }],
+    }, ["MISSING_SEAM_ENDPOINT"]);
+    expect(missing.missingSeamEndpointIds).toEqual([seam.id]);
+    expect(missing.seamEndpointNotOnFaceIds).toEqual([]);
+
+    const declaredFace = base.faces.find(({id}) => id === seam.matingEdges[0].faceId)!;
+    const offFaceVertex = base.vertices.find(
+      ({id, yMm}) => !declaredFace.vertexIds.includes(id) && yMm === 0,
+    )!;
+    const offFace = validationWithCodes({
+      ...base,
+      seams: [{
+        ...seam,
+        matingEdges: [
+          {...seam.matingEdges[0], fromVertexId: offFaceVertex.id},
+          seam.matingEdges[1],
+        ],
+      }],
+    }, ["SEAM_ENDPOINT_NOT_ON_FACE"]);
+    expect(offFace.missingSeamEndpointIds).toEqual([]);
+    expect(offFace.seamEndpointNotOnFaceIds).toEqual([seam.id]);
+  });
+
+  it("rejects same-face, zero-span, malformed, and invalid-tolerance seams without throwing", () => {
+    const base = fixturePlan().foldNet;
+    const seam = base.seams[0];
+    const sameFace = {
+      ...seam,
+      matingEdges: [
+        seam.matingEdges[0],
+        {
+          ...seam.matingEdges[0],
+          fromVertexId: seam.matingEdges[0].toVertexId,
+          toVertexId: seam.matingEdges[0].fromVertexId,
+        },
+      ],
+    } as typeof seam;
+    const zeroSpan = {
+      ...seam,
+      matingEdges: [
+        {...seam.matingEdges[0], toVertexId: seam.matingEdges[0].fromVertexId},
+        seam.matingEdges[1],
+      ],
+    } as typeof seam;
+    const malformedEdges = [
+      [seam.matingEdges[0]],
+      [...seam.matingEdges, seam.matingEdges[0]],
+      [undefined, seam.matingEdges[1]],
+    ];
+    const variants: FoldNetCandidate[] = [
+      {...base, seams: [sameFace]},
+      {...base, seams: [zeroSpan]},
+      ...malformedEdges.map((matingEdges) => ({
+        ...base,
+        seams: [{...seam, matingEdges} as unknown as typeof seam],
+      })),
+      {...base, seams: [{...seam, kind: "glue" as "tape"}]},
+      {...base, seams: [{...seam, expectedGapMm: -0.01}]},
+      {...base, seams: [{...seam, expectedGapMm: Number.NaN}]},
+      {...base, seams: [{...seam, expectedGapMm: Number.POSITIVE_INFINITY}]},
+      {...base, seams: [{...seam, toleranceMm: 0}]},
+      {...base, seams: [{...seam, toleranceMm: Number.NaN}]},
+      {...base, seams: [{...seam, toleranceMm: Number.POSITIVE_INFINITY}]},
+    ];
+    variants.forEach((candidate) => validationWithCodes(candidate, ["INVALID_SEAM"]));
+  });
+
   it("separates missing crease endpoints from existing endpoints that are not on both faces", () => {
     const base = simpleNet();
     const crease = base.creases[0];
@@ -231,6 +349,22 @@ describe("fold-net validation diagnostics", () => {
       {...base, playbook: base.playbook.map((step) => step.code === "SCORE" ? {...step, scoreIds: [cutId]} : step)},
     ];
     variants.forEach((candidate) => validationWithCodes(candidate, ["INVALID_PLAYBOOK_REFERENCE"]));
+  });
+
+  it("binds SEAL only to seams and rejects obsolete fields or incomplete coverage", () => {
+    const base = fixturePlan().foldNet;
+    const seamId = base.seams[0].id;
+    const variants: FoldNetCandidate[] = [
+      {...base, playbook: base.playbook.map((step) => step.code === "SEAL" ? {...step, seamIds: undefined, faceIds: ["front-flap", "back-flap"]} : step)},
+      {...base, playbook: base.playbook.map((step) => step.code === "SEAL" ? {...step, cutIds: [base.cuts[0].id]} : step)},
+      {...base, playbook: base.playbook.map((step) => step.code === "SEAL" ? {...step, seamIds: []} : step)},
+      {...base, playbook: base.playbook.map((step) => step.code === "SEAL" ? {...step, seamIds: [seamId, seamId]} : step)},
+      {...base, playbook: base.playbook.map((step) => step.code === "SEAL" ? {...step, seamIds: ["unknown-seam"]} : step)},
+      {...base, playbook: base.playbook.map((step) => step.code === "SCRAP" ? {...step, scrapIds: undefined, cutIds: base.cuts.map(({id}) => id)} : step)},
+    ];
+    variants.forEach((candidate) =>
+      validationWithCodes(candidate, ["INVALID_PLAYBOOK_REFERENCE"]),
+    );
   });
 });
 

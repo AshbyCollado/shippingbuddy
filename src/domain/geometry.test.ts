@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vitest";
 import {COMMON_BOXES, FRAGILITY_PRESETS, PROTECTION_GOAL_MM, PROTOTYPE_PROFILE, autoFitSheet, chooseWrapOrientation, enumerateOrientations, fitsSheet, generateCommonBoxPlan, generateMailerPlan, generateTabInsertPlan, generateWrapPlan, packedEnvelope, protectionGoalToMm, renderWrapSvg, type ItemInput} from "./geometry";
-import {foldNetFromWrapPlan, foldNetToCuts, foldNetToRectangles, foldNetToScores, foldNetToScrapRegions, validateFoldNet, type FoldNet} from "./foldnet";
+import {foldNetAtProgress, foldNetFromWrapPlan, foldNetToCuts, foldNetToRectangles, foldNetToScores, foldNetToScrapRegions, validateFoldNet, type FoldNet} from "./foldnet";
 
 const item: ItemInput = {
   dimensions: {lengthMm: 356, widthMm: 330, heightMm: 305},
@@ -27,7 +27,66 @@ function expectIdBoundPlaybook(net: FoldNet) {
   expect(byCode.get("CUT")?.cutIds).toEqual(net.cuts.map(({id}) => id));
   expect(byCode.get("SCRAP")?.scrapIds).toEqual(net.scraps.map(({id}) => id));
   expect(byCode.get("FOLD")?.creaseIds).toEqual(net.creases.map(({id}) => id));
-  expect(byCode.get("SEAL")?.faceIds).toEqual(net.faces.filter(({role}) => role === "TAB").map(({id}) => id));
+  expect(byCode.get("SEAL")?.seamIds).toEqual(net.seams.map(({id}) => id));
+}
+
+function overlapsBoundarySegment(
+  firstFrom: {readonly xMm: number; readonly yMm: number},
+  firstTo: {readonly xMm: number; readonly yMm: number},
+  secondFrom: {readonly xMm: number; readonly yMm: number},
+  secondTo: {readonly xMm: number; readonly yMm: number},
+) {
+  const dx = firstTo.xMm - firstFrom.xMm;
+  const dy = firstTo.yMm - firstFrom.yMm;
+  const length = Math.hypot(dx, dy);
+  if (length <= 0.000001) return false;
+  const cross = (point: {readonly xMm: number; readonly yMm: number}) =>
+    dx * (point.yMm - firstFrom.yMm) -
+    dy * (point.xMm - firstFrom.xMm);
+  if (
+    Math.abs(cross(secondFrom)) > 0.000001 ||
+    Math.abs(cross(secondTo)) > 0.000001
+  )
+    return false;
+  const ux = dx / length;
+  const uy = dy / length;
+  const projections = [secondFrom, secondTo].map(
+    (point) =>
+      (point.xMm - firstFrom.xMm) * ux +
+      (point.yMm - firstFrom.yMm) * uy,
+  );
+  return (
+    Math.min(length, Math.max(...projections)) -
+      Math.max(0, Math.min(...projections)) >
+    0.000001
+  );
+}
+
+function expectedScrapCutIds(net: FoldNet, scrapId: string) {
+  const vertices = new Map(net.vertices.map((vertex) => [vertex.id, vertex]));
+  const scrap = net.scraps.find(({id}) => id === scrapId)!;
+  return net.cuts
+    .filter((cut) => {
+      const from = vertices.get(cut.fromVertexId)!;
+      const to = vertices.get(cut.toVertexId)!;
+      return scrap.vertexIds.some((id, index) =>
+        overlapsBoundarySegment(
+          from,
+          to,
+          vertices.get(id)!,
+          vertices.get(scrap.vertexIds[(index + 1) % scrap.vertexIds.length])!,
+        ),
+      );
+    })
+    .map(({id}) => id);
+}
+
+function foldedVertex(net: FoldNet, faceId: string, vertexId: string) {
+  const face = net.faces.find(({id}) => id === faceId)!;
+  const pose = foldNetAtProgress(net, 1).faces.find(
+    (candidate) => candidate.faceId === faceId,
+  )!;
+  return pose.vertices[face.vertexIds.indexOf(vertexId)];
 }
 
 describe("Shipping Buddy geometry", () => {
@@ -155,6 +214,7 @@ describe("Shipping Buddy geometry", () => {
         ...net.scores.map(({id}) => id),
         ...net.cuts.map(({id}) => id),
         ...net.scraps.map(({id}) => id),
+        ...net.seams.map(({id}) => id),
         ...net.creases.map(({id}) => id),
       ];
       expect(new Set(ids).size).toBe(ids.length);
@@ -165,6 +225,68 @@ describe("Shipping Buddy geometry", () => {
         "scrap-top": [0, -1],
         "scrap-bottom": [0, 1],
       });
+      expect(Object.fromEntries(net.scraps.map(({id, cutIds}) => [id, cutIds]))).toEqual({
+        "scrap-left": ["cut-17"],
+        "scrap-right": ["cut-22"],
+        "scrap-top": ["cut-23"],
+        "scrap-bottom": ["cut-26"],
+      });
+      expect(net.scraps).toHaveLength(4);
+      net.scraps.forEach((scrap) => {
+        expect(scrap.cutIds.length).toBeGreaterThan(0);
+        expect(scrap.cutIds).toEqual(expectedScrapCutIds(net, scrap.id));
+      });
+      expect(net.seams).toMatchObject([
+        {
+          id: "top-flap-tape-seam",
+          kind: "tape",
+          matingEdges: [
+            {faceId: "front-flap"},
+            {faceId: "back-flap"},
+          ],
+          expectedGapMm: 4,
+          toleranceMm: 1,
+        },
+      ]);
+      const vertexById = new Map(net.vertices.map((vertex) => [vertex.id, vertex]));
+      expect(net.seams[0].matingEdges.map((edge) => [
+        vertexById.get(edge.fromVertexId),
+        vertexById.get(edge.toVertexId),
+      ])).toEqual([
+        [
+          expect.objectContaining({xMm: 3, yMm: -478}),
+          expect.objectContaining({xMm: 357, yMm: -478}),
+        ],
+        [
+          expect.objectContaining({xMm: 357, yMm: 820}),
+          expect.objectContaining({xMm: 3, yMm: 820}),
+        ],
+      ]);
+      net.seams[0].matingEdges.forEach((edge, edgeIndex) => {
+        const face = net.faces.find(({id}) => id === edge.faceId)!;
+        const faceY = face.vertexIds.map((id) => vertexById.get(id)!.yMm);
+        const freeEdgeY = edgeIndex === 0 ? Math.min(...faceY) : Math.max(...faceY);
+        expect(vertexById.get(edge.fromVertexId)?.yMm).toBe(freeEdgeY);
+        expect(vertexById.get(edge.toVertexId)?.yMm).toBe(freeEdgeY);
+      });
+      const [frontEdge, backEdge] = net.seams[0].matingEdges;
+      const pairedDistances = [
+        [
+          foldedVertex(net, frontEdge.faceId, frontEdge.fromVertexId),
+          foldedVertex(net, backEdge.faceId, backEdge.toVertexId),
+        ],
+        [
+          foldedVertex(net, frontEdge.faceId, frontEdge.toVertexId),
+          foldedVertex(net, backEdge.faceId, backEdge.fromVertexId),
+        ],
+      ].map(([from, to]) => Math.hypot(
+        to.xMm - from.xMm,
+        to.yMm - from.yMm,
+        to.zMm - from.zMm,
+      ));
+      pairedDistances.forEach((distance) =>
+        expect(distance).toBeCloseTo(net.seams[0].expectedGapMm, 8),
+      );
       expectIdBoundPlaybook(net);
 
       expect(result.rectangles).toEqual(foldNetToRectangles(net));
