@@ -54,9 +54,28 @@ export interface FoldNetCut {
   readonly toVertexId: string;
 }
 
+export interface FoldNetSeamEdgeReference {
+  readonly faceId: string;
+  readonly fromVertexId: string;
+  readonly toVertexId: string;
+}
+
+export interface FoldNetSeam {
+  readonly id: string;
+  readonly kind: "tape";
+  readonly matingEdges: readonly [
+    FoldNetSeamEdgeReference,
+    FoldNetSeamEdgeReference,
+  ];
+  readonly expectedGapMm: number;
+  readonly toleranceMm: number;
+}
+
 export interface FoldNetScrap {
   readonly id: string;
   readonly vertexIds: readonly string[];
+  /** Canonical cuts that release this scrap, retained in cut execution order. */
+  readonly cutIds: readonly string[];
   /** Compatibility points for the old SVG/scene consumers. */
   readonly points: readonly FoldNetVertex[];
   readonly exitDirection: readonly [number, number];
@@ -120,6 +139,7 @@ export interface FoldNetPlaybookStep {
   readonly scrapIds?: readonly string[];
   readonly creaseIds?: readonly string[];
   readonly faceIds?: readonly string[];
+  readonly seamIds?: readonly string[];
 }
 
 export interface FoldNet {
@@ -130,6 +150,7 @@ export interface FoldNet {
   readonly scores: readonly FoldNetScore[];
   readonly cuts: readonly FoldNetCut[];
   readonly scraps: readonly FoldNetScrap[];
+  readonly seams: readonly FoldNetSeam[];
   /** Creases form a deterministic spanning tree rooted at rootFaceId. */
   readonly creases: readonly FoldNetCrease[];
   /** Pose timeline retained for existing animation consumers. */
@@ -191,6 +212,10 @@ export interface FoldNetValidation {
   readonly zeroLengthCutIds: readonly string[];
   readonly missingScrapIds: readonly string[];
   readonly invalidScrapIds: readonly string[];
+  readonly invalidScrapCutIds: readonly string[];
+  readonly missingSeamEndpointIds: readonly string[];
+  readonly seamEndpointNotOnFaceIds: readonly string[];
+  readonly invalidSeamIds: readonly string[];
   readonly missingCreaseEndpointIds: readonly string[];
   readonly creaseEndpointNotOnFaceIds: readonly string[];
   readonly connected: boolean;
@@ -216,6 +241,10 @@ export type FoldNetDiagnosticCode =
   | "ZERO_LENGTH_CUT"
   | "MISSING_SCRAP_ENDPOINT"
   | "INVALID_SCRAP"
+  | "INVALID_SCRAP_CUT_REFERENCE"
+  | "MISSING_SEAM_ENDPOINT"
+  | "SEAM_ENDPOINT_NOT_ON_FACE"
+  | "INVALID_SEAM"
   | "MISSING_CREASE_ENDPOINT"
   | "CREASE_ENDPOINT_NOT_ON_FACE"
   | "DISCONNECTED"
@@ -283,11 +312,27 @@ interface ScrapInput {
   points: readonly Point2D[];
   exitDirection?: readonly [number, number];
 }
+interface SeamPointEdgeReference {
+  readonly faceId: string;
+  readonly from: Point2D;
+  readonly to: Point2D;
+}
+export interface FoldNetSeamInput {
+  readonly id: string;
+  readonly kind: "tape";
+  readonly matingEdges: readonly [
+    SeamPointEdgeReference,
+    SeamPointEdgeReference,
+  ];
+  readonly expectedGapMm: number;
+  readonly toleranceMm: number;
+}
 export interface FoldNetRectangleInput {
   readonly rectangles: readonly RectInput[];
   readonly scores?: readonly LineInput[];
   readonly cuts?: readonly LineInput[];
   readonly scrapRegions?: readonly ScrapInput[];
+  readonly seams?: readonly FoldNetSeamInput[];
   readonly orientation: FoldNetOrientation;
   readonly steps?: readonly FoldNetStep[];
   readonly playbook?: readonly FoldNetPlaybookStep[];
@@ -519,7 +564,11 @@ function inferCutKind(id: string): FoldNetCutKind {
   if (normalized.includes("trim")) return "trim";
   return "boundary";
 }
-function stepProgress(net: FoldNet, stepId: FoldStepId, progress: number) {
+export function foldNetStepProgress(
+  net: FoldNet,
+  stepId: FoldStepId,
+  progress: number,
+) {
   const step = net.steps.find((candidate) => candidate.id === stepId);
   if (!step) return 0;
   const local =
@@ -534,7 +583,7 @@ function creaseAngle(net: FoldNet, crease: FoldNetCrease, progress: number) {
   return (
     crease.direction *
     crease.angleRad *
-    stepProgress(net, crease.stepId, progress)
+    foldNetStepProgress(net, crease.stepId, progress)
   );
 }
 function worldPointForVertex(
@@ -716,6 +765,31 @@ export function foldNetFromRectangles(
       `${[right.a, right.b].sort().join("~")}:${pointKey(right.from)}:${pointKey(right.to)}`,
     ),
   );
+  const seamEdgeForInput = (
+    edge: SeamPointEdgeReference,
+  ): FoldNetSeamEdgeReference => {
+    const from = vertexForPoint(edge.from);
+    const to = vertexForPoint(edge.to);
+    vertexById.set(from.id, from);
+    vertexById.set(to.id, to);
+    insertPoint(faceVertexIds, edge.faceId, edge.from, from.id, vertexById);
+    insertPoint(faceVertexIds, edge.faceId, edge.to, to.id, vertexById);
+    return {
+      faceId: edge.faceId,
+      fromVertexId: from.id,
+      toVertexId: to.id,
+    };
+  };
+  const seams = (input.seams ?? []).map((seam): FoldNetSeam => ({
+    id: seam.id,
+    kind: seam.kind,
+    matingEdges: [
+      seamEdgeForInput(seam.matingEdges[0]),
+      seamEdgeForInput(seam.matingEdges[1]),
+    ],
+    expectedGapMm: seam.expectedGapMm,
+    toleranceMm: seam.toleranceMm,
+  }));
   const finalizedFaces = faces.map((face) => ({
     ...face,
     vertexIds: [...(faceVertexIds.get(face.id) ?? face.vertexIds)],
@@ -792,6 +866,8 @@ export function foldNetFromRectangles(
   const cuts = (input.cuts ?? []).map((item) => {
     const from = vertexForPoint(item.from);
     const to = vertexForPoint(item.to);
+    vertexById.set(from.id, from);
+    vertexById.set(to.id, to);
     return {
       id: item.id,
       kind: item.kind ?? inferCutKind(item.id),
@@ -830,6 +906,17 @@ export function foldNetFromRectangles(
     return {
       id: region.id,
       vertexIds: points.map((point) => point.id),
+      cutIds: cuts
+        .filter((cut) => {
+          const cutFrom = vertexById.get(cut.fromVertexId);
+          const cutTo = vertexById.get(cut.toVertexId);
+          if (!cutFrom || !cutTo) return false;
+          return points.some((point, index) => {
+            const next = points[(index + 1) % points.length];
+            return Boolean(segmentOverlap(cutFrom, cutTo, point, next));
+          });
+        })
+        .map((cut) => cut.id),
       points,
       exitDirection,
     };
@@ -876,10 +963,8 @@ export function foldNetFromRectangles(
         {
           code: "SEAL" as const,
           sequence: 5,
-          label: "Seal the joining tabs and seam.",
-          faceIds: finalizedFaces
-            .filter((face) => face.role === "TAB")
-            .map((face) => face.id),
+          label: "Tape the generated mating seam.",
+          seamIds: seams.map((seam) => seam.id),
         },
         {
           code: "REMEASURE" as const,
@@ -901,6 +986,7 @@ export function foldNetFromRectangles(
     scores,
     cuts,
     scraps,
+    seams,
     creases,
     steps: [...(input.steps ?? DEFAULT_FOLD_NET_STEPS)],
     playbook,
@@ -935,6 +1021,7 @@ export function foldNetFromWrapPlan(
     scores: plan.scores,
     cuts: plan.cuts,
     scrapRegions: plan.scrapRegions,
+    seams: plan.seams,
     orientation,
     steps: steps ?? DEFAULT_FOLD_NET_STEPS,
   });
@@ -1061,6 +1148,29 @@ function faceArea(face: FoldNetFace, vertices: Map<string, FoldNetVertex>) {
     ? 0
     : signedArea(points as FoldNetVertex[]);
 }
+function seamReferenceLiesOnFaceEdge(
+  first: FoldNetVertex,
+  second: FoldNetVertex,
+  face: FoldNetFace,
+  vertices: Map<string, FoldNetVertex>,
+) {
+  return face.vertexIds.some((fromId, index) => {
+    const from = vertices.get(fromId);
+    const to = vertices.get(face.vertexIds[(index + 1) % face.vertexIds.length]);
+    if (!from || !to) return false;
+    const edge = vector(to.xMm - from.xMm, to.yMm - from.yMm);
+    const firstRelative = vector(first.xMm - from.xMm, first.yMm - from.yMm);
+    const secondRelative = vector(second.xMm - from.xMm, second.yMm - from.yMm);
+    return (
+      Math.abs(cross(edge, firstRelative).zMm) <=
+        EPSILON_MM * Math.max(1, length(edge)) &&
+      Math.abs(cross(edge, secondRelative).zMm) <=
+        EPSILON_MM * Math.max(1, length(edge)) &&
+      pointInBounds(first, from, to) &&
+      pointInBounds(second, from, to)
+    );
+  });
+}
 function graphValidation(net: FoldNetCandidate) {
   const faceIds = net.faces.map((face) => face.id);
   const vertexIds = net.vertices.map((vertex) => vertex.id);
@@ -1099,6 +1209,10 @@ function graphValidation(net: FoldNetCandidate) {
   const zeroLengthCutIds = new Set<string>();
   const missingScrapIds = new Set<string>();
   const invalidScrapIds = new Set<string>();
+  const invalidScrapCutIds = new Set<string>();
+  const missingSeamEndpointIds = new Set<string>();
+  const seamEndpointNotOnFaceIds = new Set<string>();
+  const invalidSeamIds = new Set<string>();
   const nonFiniteVertexIds = net.vertices
     .filter((vertex) => ![vertex.xMm, vertex.yMm].every(Number.isFinite))
     .map((vertex) => vertex.id);
@@ -1111,7 +1225,8 @@ function graphValidation(net: FoldNetCandidate) {
       missingMarkIds.add(mark.id);
     if (mark.fromVertexId === mark.toVertexId) zeroLengthMarkIds.add(mark.id);
   });
-  (net.cuts ?? []).forEach((cut) => {
+  const cuts = net.cuts ?? [];
+  cuts.forEach((cut) => {
     if (!vertexSet.has(cut.fromVertexId) || !vertexSet.has(cut.toVertexId))
       missingCutIds.add(cut.id);
     if (cut.fromVertexId === cut.toVertexId) zeroLengthCutIds.add(cut.id);
@@ -1155,6 +1270,24 @@ function graphValidation(net: FoldNetCandidate) {
           selfIntersecting = true;
       }
     const direction = scrap.exitDirection;
+    const actualCutIds = Array.isArray(scrap.cutIds) ? scrap.cutIds : [];
+    const expectedCutIds = cuts
+      .filter((cut) => {
+        const cutFrom = vertices.get(cut.fromVertexId);
+        const cutTo = vertices.get(cut.toVertexId);
+        if (!cutFrom || !cutTo) return false;
+        return scrapPoints.some((point, index) => {
+          const next = scrapPoints[(index + 1) % scrapPoints.length];
+          return Boolean(next && segmentOverlap(cutFrom, cutTo, point, next));
+        });
+      })
+      .map((cut) => cut.id);
+    if (
+      !Array.isArray(scrap.cutIds) ||
+      actualCutIds.length !== expectedCutIds.length ||
+      actualCutIds.some((id, index) => id !== expectedCutIds[index])
+    )
+      invalidScrapCutIds.add(scrap.id);
     if (
       !pointsMatch ||
       scrap.vertexIds.length < 3 ||
@@ -1167,6 +1300,55 @@ function graphValidation(net: FoldNetCandidate) {
       Math.hypot(direction?.[0] ?? 0, direction?.[1] ?? 0) <= EPSILON_MM
     )
       invalidScrapIds.add(scrap.id);
+  });
+  const seams = net.seams ?? [];
+  seams.forEach((seam) => {
+    const edges = Array.isArray(seam.matingEdges) ? seam.matingEdges : [];
+    if (
+      seam.kind !== "tape" ||
+      edges.length !== 2 ||
+      !Number.isFinite(seam.expectedGapMm) ||
+      seam.expectedGapMm < 0 ||
+      !Number.isFinite(seam.toleranceMm) ||
+      seam.toleranceMm <= 0
+    )
+      invalidSeamIds.add(seam.id);
+    if (
+      edges.length === 2 &&
+      edges[0] &&
+      edges[1] &&
+      edges[0].faceId === edges[1].faceId
+    )
+      invalidSeamIds.add(seam.id);
+    edges.forEach((edge) => {
+      if (
+        !edge ||
+        typeof edge.faceId !== "string" ||
+        typeof edge.fromVertexId !== "string" ||
+        typeof edge.toVertexId !== "string"
+      ) {
+        missingSeamEndpointIds.add(seam.id);
+        invalidSeamIds.add(seam.id);
+        return;
+      }
+      const face = net.faces.find((candidate) => candidate.id === edge.faceId);
+      const from = vertices.get(edge.fromVertexId);
+      const to = vertices.get(edge.toVertexId);
+      if (!face || !from || !to) {
+        missingSeamEndpointIds.add(seam.id);
+        if (!face) missingFaceIds.add(edge.faceId);
+        if (!from) missingVertexIds.add(edge.fromVertexId);
+        if (!to) missingVertexIds.add(edge.toVertexId);
+        return;
+      }
+      if (
+        edge.fromVertexId === edge.toVertexId ||
+        Math.hypot(to.xMm - from.xMm, to.yMm - from.yMm) <= EPSILON_MM
+      )
+        invalidSeamIds.add(seam.id);
+      if (!seamReferenceLiesOnFaceEdge(from, to, face, vertices))
+        seamEndpointNotOnFaceIds.add(seam.id);
+    });
   });
   net.faces.forEach((face) => {
     const points = face.vertexIds
@@ -1225,6 +1407,7 @@ function graphValidation(net: FoldNetCandidate) {
     ...marks.map((mark) => mark.id),
     ...(net.cuts ?? []).map((cut) => cut.id),
     ...(net.scraps ?? []).map((scrap) => scrap.id),
+    ...seams.map((seam) => seam.id),
     ...net.creases.map((crease) => crease.id),
   ];
   const emptyIds = allIds.filter(
@@ -1286,6 +1469,16 @@ function graphValidation(net: FoldNetCandidate) {
   zeroLengthCutIds.forEach((id) => errors.push(`zero-length cut: ${id}`));
   missingCutIds.forEach((id) => errors.push(`missing cut endpoint: ${id}`));
   invalidScrapIds.forEach((id) => errors.push(`invalid scrap: ${id}`));
+  invalidScrapCutIds.forEach((id) =>
+    errors.push(`invalid scrap cut references: ${id}`),
+  );
+  missingSeamEndpointIds.forEach((id) =>
+    errors.push(`missing seam endpoint: ${id}`),
+  );
+  seamEndpointNotOnFaceIds.forEach((id) =>
+    errors.push(`seam endpoint not on declared face edge: ${id}`),
+  );
+  invalidSeamIds.forEach((id) => errors.push(`invalid seam: ${id}`));
   missingCreaseEndpointIds.forEach((id) =>
     errors.push(`missing crease endpoint: ${id}`),
   );
@@ -1298,6 +1491,7 @@ function graphValidation(net: FoldNetCandidate) {
     ...marks.map((mark) => mark.id),
     ...(net.cuts ?? []).map((cut) => cut.id),
     ...(net.scraps ?? []).map((scrap) => scrap.id),
+    ...seams.map((seam) => seam.id),
     ...net.creases.map((crease) => crease.id),
   ]);
   const expectedByCode: Record<FoldNetPlaybookCode, Set<string>> = {
@@ -1306,9 +1500,7 @@ function graphValidation(net: FoldNetCandidate) {
     CUT: new Set((net.cuts ?? []).map((cut) => cut.id)),
     SCRAP: new Set((net.scraps ?? []).map((scrap) => scrap.id)),
     FOLD: new Set(net.creases.map((crease) => crease.id)),
-    SEAL: new Set(
-      net.faces.filter((face) => face.role === "TAB").map((face) => face.id),
-    ),
+    SEAL: new Set(seams.map((seam) => seam.id)),
     REMEASURE: new Set(),
   };
   const playbook = net.playbook ?? [];
@@ -1337,18 +1529,25 @@ function graphValidation(net: FoldNetCandidate) {
       CUT: "cutIds",
       SCRAP: "scrapIds",
       FOLD: "creaseIds",
-      SEAL: "faceIds",
+      SEAL: "seamIds",
       REMEASURE: undefined,
     };
     const field = fieldByCode[step.code];
+    if (field && !Array.isArray(step[field]))
+      errors.push(`playbook missing reference field: ${step.code}`);
     const refs = field
       ? [...((step[field] as readonly string[] | undefined) ?? [])]
       : [];
     const populatedOtherFields = (
-      ["scoreIds", "cutIds", "scrapIds", "creaseIds", "faceIds"] as const
-    ).filter(
-      (candidate) => candidate !== field && (step[candidate] ?? []).length > 0,
-    );
+      [
+        "scoreIds",
+        "cutIds",
+        "scrapIds",
+        "creaseIds",
+        "faceIds",
+        "seamIds",
+      ] as const
+    ).filter((candidate) => candidate !== field && step[candidate] !== undefined);
     if (populatedOtherFields.length)
       errors.push(`invalid playbook reference fields: ${step.code}`);
     const expected = expectedByCode[step.code] ?? new Set<string>();
@@ -1387,6 +1586,10 @@ function graphValidation(net: FoldNetCandidate) {
     zeroLengthCutIds: [...zeroLengthCutIds].sort(),
     missingScrapIds: [...missingScrapIds].sort(),
     invalidScrapIds: [...invalidScrapIds].sort(),
+    invalidScrapCutIds: [...invalidScrapCutIds].sort(),
+    missingSeamEndpointIds: [...missingSeamEndpointIds].sort(),
+    seamEndpointNotOnFaceIds: [...seamEndpointNotOnFaceIds].sort(),
+    invalidSeamIds: [...invalidSeamIds].sort(),
     missingCreaseEndpointIds: [...missingCreaseEndpointIds].sort(),
     creaseEndpointNotOnFaceIds: [...creaseEndpointNotOnFaceIds].sort(),
     connected,
@@ -1472,6 +1675,13 @@ export function validateFoldNet(net: FoldNetCandidate): FoldNetValidation {
   if (result.zeroLengthCutIds.length) codes.add("ZERO_LENGTH_CUT");
   if (result.missingScrapIds.length) codes.add("MISSING_SCRAP_ENDPOINT");
   if (result.invalidScrapIds.length) codes.add("INVALID_SCRAP");
+  if (result.invalidScrapCutIds.length)
+    codes.add("INVALID_SCRAP_CUT_REFERENCE");
+  if (result.missingSeamEndpointIds.length)
+    codes.add("MISSING_SEAM_ENDPOINT");
+  if (result.seamEndpointNotOnFaceIds.length)
+    codes.add("SEAM_ENDPOINT_NOT_ON_FACE");
+  if (result.invalidSeamIds.length) codes.add("INVALID_SEAM");
   if (result.missingCreaseEndpointIds.length)
     codes.add("MISSING_CREASE_ENDPOINT");
   if (result.creaseEndpointNotOnFaceIds.length)

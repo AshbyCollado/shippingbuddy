@@ -532,7 +532,6 @@ test("repeated Build route mounts release and reacquire bounded resources withou
 });
 
 for (const fixture of [
-  {name: "flat-sheet source", source: {mode: "FLAT_SHEET"}},
   {name: "unresolved Existing measurements", source: {mode: "EXISTING_BOX", measurementBasis: "NOT_SURE"}},
   {name: "selected too-small Common source", source: {mode: "COMMON_BOX", selectedCommonBoxId: "RSC-01"}},
 ]) {

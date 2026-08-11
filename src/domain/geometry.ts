@@ -264,6 +264,7 @@ export const FRAGILITY_PRESETS: Record<Fragility, number> = {
 };
 
 const EPSILON_MM = NUMERIC_EPSILON_MM;
+const MINIMUM_SEAM_TOLERANCE_MM = 0.5;
 
 function positive(value: number): boolean {
   return Number.isFinite(value) && value > 0;
@@ -544,6 +545,8 @@ export function generateWrapPlan(
   const BW = W + 3 * t;
   const WH = H + t;
   const G = Math.max(profile.topSeamGapMm, t, 2);
+  if (!Number.isFinite(G) || G < 0)
+    return { error: "Top-seam gap must resolve to a finite nonnegative value." };
   const F = (BW - G) / 2;
   const Cz = Math.max(profile.tabEndClearanceMm, 2 * t, 4);
   const D = a + Cz;
@@ -553,6 +556,15 @@ export function generateWrapPlan(
     t + 2 * profile.topFlapSideClearanceMm,
   );
   const Q = S / 2;
+  if (
+    !Number.isFinite(profile.topFlapSideClearanceMm) ||
+    profile.topFlapSideClearanceMm < 0
+  )
+    return { error: "Top-flap clearance must be a finite nonnegative value." };
+  const seamToleranceMm = Math.max(
+    MINIMUM_SEAM_TOLERANCE_MM,
+    profile.topFlapSideClearanceMm,
+  );
   const patternLabel =
     patternId === "MAILER_BOX_V1"
       ? "mailer/tuck-end"
@@ -710,6 +722,26 @@ export function generateWrapPlan(
     scores: profileScores,
     cuts: profileCuts,
     scrapRegions,
+    seams: [
+      {
+        id: "top-flap-tape-seam",
+        kind: "tape",
+        matingEdges: [
+          {
+            faceId: "front-flap",
+            from: { xMm: Q, yMm: -WH - F },
+            to: { xMm: BL - Q, yMm: -WH - F },
+          },
+          {
+            faceId: "back-flap",
+            from: { xMm: BL - Q, yMm: BW + WH + F },
+            to: { xMm: Q, yMm: BW + WH + F },
+          },
+        ],
+        expectedGapMm: G,
+        toleranceMm: seamToleranceMm,
+      },
+    ],
     orientation,
   });
   // Legacy fields are projections of the canonical net.  They remain present
