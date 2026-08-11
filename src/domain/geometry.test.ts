@@ -1,5 +1,6 @@
 import {describe, expect, it} from "vitest";
 import {COMMON_BOXES, FRAGILITY_PRESETS, PROTECTION_GOAL_MM, PROTOTYPE_PROFILE, autoFitSheet, chooseWrapOrientation, enumerateOrientations, fitsSheet, generateCommonBoxPlan, generateMailerPlan, generateTabInsertPlan, generateWrapPlan, packedEnvelope, protectionGoalToMm, renderWrapSvg, type ItemInput} from "./geometry";
+import {foldNetFromWrapPlan, foldNetToCuts, foldNetToRectangles, foldNetToScores, foldNetToScrapRegions, validateFoldNet, type FoldNet} from "./foldnet";
 
 const item: ItemInput = {
   dimensions: {lengthMm: 356, widthMm: 330, heightMm: 305},
@@ -10,6 +11,24 @@ const item: ItemInput = {
   allowRotation: true,
   keepUpright: false,
 };
+
+function expectDeepFrozen(value: unknown, seen = new Set<object>()) {
+  if (value === null || typeof value !== "object" || seen.has(value)) return;
+  seen.add(value);
+  expect(Object.isFrozen(value)).toBe(true);
+  Object.values(value as Record<string, unknown>).forEach((child) => expectDeepFrozen(child, seen));
+}
+
+function expectIdBoundPlaybook(net: FoldNet) {
+  expect(net.playbook.map((step) => step.code)).toEqual(["VERIFY", "SCORE", "CUT", "SCRAP", "FOLD", "SEAL", "REMEASURE"]);
+  const byCode = new Map(net.playbook.map((step) => [step.code, step]));
+  expect(byCode.get("VERIFY")?.faceIds).toEqual(net.faces.map(({id}) => id));
+  expect(byCode.get("SCORE")?.scoreIds).toEqual(net.scores.map(({id}) => id));
+  expect(byCode.get("CUT")?.cutIds).toEqual(net.cuts.map(({id}) => id));
+  expect(byCode.get("SCRAP")?.scrapIds).toEqual(net.scraps.map(({id}) => id));
+  expect(byCode.get("FOLD")?.creaseIds).toEqual(net.creases.map(({id}) => id));
+  expect(byCode.get("SEAL")?.faceIds).toEqual(net.faces.filter(({role}) => role === "TAB").map(({id}) => id));
+}
 
 describe("Shipping Buddy geometry", () => {
   it("enumerates six right-handed orientations", () => {
@@ -104,6 +123,66 @@ describe("Shipping Buddy geometry", () => {
       expect(mailer.scores.some((score) => score.id === "mailer-tuck-score")).toBe(true);
       expect(insert.cuts.some((cut) => cut.id === "partition-relief-cut")).toBe(true);
       expect(mailer.foldNet.faces.length).toBe(mailer.rectangles.length);
+    }
+  });
+
+  it("generates stable canonical WRAP, MAILER, and TAB nets with lossless legacy projections", () => {
+    const envelope = packedEnvelope(item, enumerateOrientations(item)[0]);
+    const results = [
+      generateWrapPlan(envelope),
+      generateMailerPlan(envelope),
+      generateTabInsertPlan(envelope),
+    ];
+    const expectedPatterns = ["WRAP_BOX_V1", "MAILER_BOX_V1", "TAB_INSERT_V1"];
+    results.forEach((result, index) => {
+      expect("error" in result).toBe(false);
+      if ("error" in result) return;
+      const net = result.foldNet;
+      expect(result.patternId).toBe(expectedPatterns[index]);
+      expect(net.metadata).toEqual({
+        version: 1,
+        coordinateSystem: "flat-sheet-mm",
+        units: "mm",
+        orientation: envelope.orientation,
+      });
+      expect(validateFoldNet(net)).toMatchObject({valid: true, diagnosticCodes: []});
+      expect(foldNetFromWrapPlan(result)).toBe(net);
+      expectDeepFrozen(net);
+
+      const ids = [
+        ...net.vertices.map(({id}) => id),
+        ...net.faces.map(({id}) => id),
+        ...net.scores.map(({id}) => id),
+        ...net.cuts.map(({id}) => id),
+        ...net.scraps.map(({id}) => id),
+        ...net.creases.map(({id}) => id),
+      ];
+      expect(new Set(ids).size).toBe(ids.length);
+      expect(net.cuts.every((cut) => ["boundary", "relief", "slot", "seam", "trim", "lock"].includes(cut.kind))).toBe(true);
+      expect(Object.fromEntries(net.scraps.map((scrap) => [scrap.id, scrap.exitDirection]))).toEqual({
+        "scrap-left": [-1, 0],
+        "scrap-right": [1, 0],
+        "scrap-top": [0, -1],
+        "scrap-bottom": [0, 1],
+      });
+      expectIdBoundPlaybook(net);
+
+      expect(result.rectangles).toEqual(foldNetToRectangles(net));
+      expect(result.scores).toEqual(foldNetToScores(net));
+      expect(result.cuts).toEqual(foldNetToCuts(net));
+      expect(result.scrapRegions).toEqual(foldNetToScrapRegions(net).map(({id, points}) => ({id, points})));
+      expect(result.scrapRegions).toHaveLength(net.scraps.length);
+    });
+
+    const wrap = results[0];
+    const mailer = results[1];
+    const tab = results[2];
+    if (!("error" in wrap) && !("error" in mailer) && !("error" in tab)) {
+      expect(generateWrapPlan(envelope)).toEqual(wrap);
+      expect(generateMailerPlan(envelope)).toEqual(mailer);
+      expect(generateTabInsertPlan(envelope)).toEqual(tab);
+      expect(mailer.foldNet.cuts.find(({id}) => id === "mailer-lock-cut")?.kind).toBe("lock");
+      expect(tab.foldNet.cuts.find(({id}) => id === "partition-relief-cut")?.kind).toBe("relief");
     }
   });
 
