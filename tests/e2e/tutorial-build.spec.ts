@@ -364,7 +364,9 @@ for (const fixture of [
   {name: "RSC-06", exact: false, source: {mode: "COMMON_BOX", selectedCommonBoxId: "RSC-06"}},
 ] as const) {
   test(`${fixture.name} orbit, reset, polar limits, and progress canonicalization are stable`, async ({page}, testInfo) => {
-    test.setTimeout(60_000);
+    // This matrix performs six screenshots, four camera-idle polls, and three full orbit/reset passes.
+    // Hosted Ubuntu runners can complete the same deterministic sequence just beyond the default minute.
+    test.setTimeout(90_000);
     const browserErrors: string[] = [];
     page.on("console", (message) => {
       if (message.type() === "error") browserErrors.push(`console: ${message.text()}`);
