@@ -51,10 +51,12 @@ type GeometrySet = {
 };
 
 type ResourceState = {cacheSize: number; resourceCount: number};
+type RendererMetrics = {drawCalls: number; triangles: number; geometries: number; textures: number};
 type OrbitControlsImpl = ComponentRef<typeof OrbitControls>;
 type CameraState = Pick<TutorialCameraFit, "mode" | "occupancy" | "azimuth" | "polar" | "transition" | "valid"> & {distance: number};
 
 const INITIAL_CAMERA_STATE: CameraState = {mode: "TOP_DOWN", occupancy: 0, azimuth: 0, polar: 0, transition: 0, valid: false, distance: 0};
+const INITIAL_RENDERER_METRICS: RendererMetrics = {drawCalls: 0, triangles: 0, geometries: 0, textures: 0};
 
 const INITIAL_ANIMATION = (): AnimatedBox => ({
   openingAngle: 0.02 * Math.PI,
@@ -142,6 +144,32 @@ function CameraRelativeLights() {
       <pointLight position={[50, 0, 150]} intensity={0.7 * LEGACY_LIGHT_SCALE} decay={0} />
     </group>
   </>;
+}
+
+function RendererMetricsProbe({setMetrics}: {setMetrics: Dispatch<SetStateAction<RendererMetrics>>}) {
+  const signature = useRef("");
+  const committed = useRef(false);
+  useLayoutEffect(() => {
+    committed.current = true;
+    return () => {
+      committed.current = false;
+    };
+  }, []);
+  useFrame(({gl}) => {
+    const next = {
+      drawCalls: gl.info.render.calls,
+      triangles: gl.info.render.triangles,
+      geometries: gl.info.memory.geometries,
+      textures: gl.info.memory.textures,
+    };
+    const nextSignature = `${next.drawCalls}:${next.triangles}:${next.geometries}:${next.textures}`;
+    if (signature.current === nextSignature) return;
+    signature.current = nextSignature;
+    queueMicrotask(() => {
+      if (committed.current) setMetrics(next);
+    });
+  });
+  return null;
 }
 
 function cameraStateFromFit(fit: TutorialCameraFit): CameraState {
@@ -327,6 +355,7 @@ export interface TutorialCardboardPreviewProps {
 export default function TutorialCardboardPreview({dimensions}: TutorialCardboardPreviewProps) {
   const [progress, setProgress] = useState(0);
   const [resources, setResources] = useState<ResourceState>({cacheSize: 0, resourceCount: 0});
+  const [rendererMetrics, setRendererMetrics] = useState<RendererMetrics>(INITIAL_RENDERER_METRICS);
   const [cameraState, setCameraState] = useState<CameraState>(INITIAL_CAMERA_STATE);
   const [resetGeneration, setResetGeneration] = useState(0);
   const subjectRef = useRef<THREE.Group | null>(null);
@@ -334,13 +363,14 @@ export default function TutorialCardboardPreview({dimensions}: TutorialCardboard
   const dimensionsKey = `${tutorialDimensions.width}:${tutorialDimensions.length}:${tutorialDimensions.depth}:${tutorialDimensions.flapGap}`;
   const stage = stageForProgress(progress);
 
-  return <section className="tutorial-cardboard-preview" data-tutorial-foundation-commit={FOUNDATION_COMMIT} data-tutorial-output-mode="legacy-linear-no-tone-mapping" data-tutorial-panel-count={PANEL_IDS.length} data-tutorial-progress={progress.toFixed(3)} data-tutorial-stage={stage} data-tutorial-normalized-width={tutorialDimensions.width.toFixed(3)} data-tutorial-normalized-length={tutorialDimensions.length.toFixed(3)} data-tutorial-normalized-depth={tutorialDimensions.depth.toFixed(3)} data-tutorial-camera-distance={cameraState.distance.toFixed(3)} data-tutorial-camera-mode={cameraState.mode} data-tutorial-camera-occupancy={cameraState.occupancy.toFixed(3)} data-tutorial-camera-azimuth={cameraState.azimuth.toFixed(5)} data-tutorial-camera-polar={cameraState.polar.toFixed(5)} data-tutorial-camera-transition={cameraState.transition.toFixed(3)} data-tutorial-camera-fit-valid={String(cameraState.valid)} data-tutorial-camera-reset-generation={resetGeneration} data-tutorial-geometry-cache={resources.cacheSize} data-tutorial-geometry-resources={resources.resourceCount}>
+  return <section className="tutorial-cardboard-preview" data-tutorial-foundation-commit={FOUNDATION_COMMIT} data-tutorial-output-mode="legacy-linear-no-tone-mapping" data-tutorial-panel-count={PANEL_IDS.length} data-tutorial-progress={progress.toFixed(3)} data-tutorial-stage={stage} data-tutorial-normalized-width={tutorialDimensions.width.toFixed(3)} data-tutorial-normalized-length={tutorialDimensions.length.toFixed(3)} data-tutorial-normalized-depth={tutorialDimensions.depth.toFixed(3)} data-tutorial-camera-distance={cameraState.distance.toFixed(3)} data-tutorial-camera-mode={cameraState.mode} data-tutorial-camera-occupancy={cameraState.occupancy.toFixed(3)} data-tutorial-camera-azimuth={cameraState.azimuth.toFixed(5)} data-tutorial-camera-polar={cameraState.polar.toFixed(5)} data-tutorial-camera-transition={cameraState.transition.toFixed(3)} data-tutorial-camera-fit-valid={String(cameraState.valid)} data-tutorial-camera-reset-generation={resetGeneration} data-tutorial-geometry-cache={resources.cacheSize} data-tutorial-geometry-resources={resources.resourceCount} data-tutorial-draw-calls={rendererMetrics.drawCalls} data-tutorial-triangles={rendererMetrics.triangles} data-tutorial-geometries={rendererMetrics.geometries} data-tutorial-textures={rendererMetrics.textures}>
     <div className="tutorial-cardboard-preview-heading"><div><span>RSC fold preview</span><strong>Drag the slider to pause at any fold</strong></div><output aria-live="polite">{Math.round(progress * 100)}%</output></div>
     <div className="tutorial-cardboard-canvas" role="img" aria-label="Interactive corrugated cardboard RSC folding preview">
       <Canvas flat linear legacy frameloop="demand" dpr={[1, 2]} gl={{alpha: true, antialias: true}} camera={{fov: 45, position: [0, 12, 100], near: 0.1, far: 1000}}>
         <CameraRelativeLights />
         <TutorialBox dimensions={tutorialDimensions} progress={progress} setResources={setResources} subjectRef={subjectRef} />
         <TutorialCameraRig subjectRef={subjectRef} progress={progress} dimensionsKey={dimensionsKey} resetGeneration={resetGeneration} setCameraState={setCameraState} />
+        <RendererMetricsProbe setMetrics={setRendererMetrics} />
       </Canvas>
     </div>
     <div className="tutorial-cardboard-controls"><label className="tutorial-cardboard-slider-label" htmlFor="tutorial-fold-preview"><span>Fold position</span><input id="tutorial-fold-preview" type="range" min="0" max="100" step="1" value={Math.round(progress * 100)} aria-valuetext={`${Math.round(progress * 100)} percent folded`} onChange={(event) => setProgress(Number(event.currentTarget.value) / 100)} /></label><button className="tutorial-cardboard-view-reset" type="button" onClick={() => setResetGeneration((generation) => generation + 1)}>Reset view</button></div>

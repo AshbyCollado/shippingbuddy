@@ -222,6 +222,21 @@ async function readyPreview(page: Page) {
   return preview;
 }
 
+async function expectReleaseTelemetry(preview: Locator) {
+  await expect.poll(() => preview.getAttribute("data-tutorial-draw-calls")).not.toBe("0");
+  const telemetry = {
+    drawCalls: Number(await preview.getAttribute("data-tutorial-draw-calls")),
+    triangles: Number(await preview.getAttribute("data-tutorial-triangles")),
+    geometries: Number(await preview.getAttribute("data-tutorial-geometries")),
+    textures: Number(await preview.getAttribute("data-tutorial-textures")),
+  };
+  expect(telemetry.drawCalls).toBeLessThanOrEqual(16);
+  expect(telemetry.geometries).toBeLessThanOrEqual(8);
+  expect(telemetry.textures).toBeLessThanOrEqual(1);
+  await expect(preview).toHaveAttribute("data-tutorial-geometry-resources", "6");
+  return telemetry;
+}
+
 for (const fixture of [
   {name: "resolved Existing source", source: {mode: "EXISTING_BOX", measurementBasis: "INSIDE"}},
   {name: "fitting Common source", source: {mode: "COMMON_BOX", selectedCommonBoxId: "RSC-04"}},
@@ -247,6 +262,39 @@ for (const fixture of [
     expect(cacheSize).toBeGreaterThan(0);
     expect(cacheSize).toBeLessThanOrEqual(6);
     expect(resourceCount).toBe(6);
+  });
+}
+
+for (const fixture of [
+  {name: "fitting Existing", cache: "6", source: {mode: "EXISTING_BOX", measurementBasis: "INSIDE"}},
+  {name: "Common 20 in", cache: "3", source: {mode: "COMMON_BOX", selectedCommonBoxId: "RSC-06"}},
+]) {
+  test(`${fixture.name} tutorial stays within release telemetry ceilings across route cycles`, async ({page}) => {
+    const browserErrors: string[] = [];
+    page.on("console", (message) => { if (message.type() === "error") browserErrors.push(`console: ${message.text()}`); });
+    page.on("pageerror", (error) => browserErrors.push(`page: ${error.message}`));
+    await page.addInitScript(() => {
+      const tracked = window as typeof window & {__tutorialReleaseWebglLosses?: number};
+      tracked.__tutorialReleaseWebglLosses = 0;
+      document.addEventListener("webglcontextlost", () => { tracked.__tutorialReleaseWebglLosses = (tracked.__tutorialReleaseWebglLosses ?? 0) + 1; }, true);
+    });
+    await seedPlanner(page, fixture.source);
+    await page.goto("/plan/build");
+    const samples: Array<{cache: string | null; resources: string | null; drawCalls: number; triangles: number; geometries: number; textures: number}> = [];
+    for (let cycle = 0; cycle < 3; cycle += 1) {
+      const preview = await readyPreview(page);
+      const telemetry = await expectReleaseTelemetry(preview);
+      samples.push({cache: await preview.getAttribute("data-tutorial-geometry-cache"), resources: await preview.getAttribute("data-tutorial-geometry-resources"), ...telemetry});
+      await page.locator(".planner-progress").getByRole("link", {name: /Fit/}).click();
+      await expect(page.locator("canvas")).toHaveCount(0);
+      await page.locator(".planner-progress").getByRole("link", {name: /Build/}).click();
+    }
+    expect(new Set(samples.map((sample) => sample.cache))).toEqual(new Set([fixture.cache]));
+    expect(new Set(samples.map((sample) => sample.resources))).toEqual(new Set(["6"]));
+    expect(await page.evaluate(() => (window as typeof window & {__tutorialReleaseWebglLosses?: number}).__tutorialReleaseWebglLosses ?? 0)).toBe(0);
+    expect(browserErrors).toEqual([]);
+    console.log(`${fixture.name} telemetry ${JSON.stringify(samples)}`);
+    expect(Math.max(...samples.map((sample) => sample.triangles))).toBeLessThanOrEqual(250_000);
   });
 }
 

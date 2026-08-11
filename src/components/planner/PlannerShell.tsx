@@ -79,7 +79,7 @@ export function PlannerShell({children}: {children: ReactNode}) {
           </div>
           <button type="button" disabled={!ready} className="planner-tool-button" onClick={downloadDraft}>Export</button>
           <button type="button" disabled={!ready} className="planner-tool-button" onClick={() => { if (ready) inputRef.current?.click(); }}>Import</button>
-          <input ref={inputRef} disabled={!ready} className="planner-file-input" type="file" accept="application/json,.json" onChange={readDraft} />
+          <input ref={inputRef} disabled={!ready} className="planner-file-input" type="file" accept="application/json,.json" aria-label="Import planner draft from JSON file" onChange={readDraft} />
         </div>
       </header>
 
