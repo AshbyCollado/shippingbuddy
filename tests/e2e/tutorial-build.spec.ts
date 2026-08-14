@@ -272,8 +272,20 @@ for (const fixture of [
 ]) {
   test(`${fixture.name} tutorial stays within release telemetry ceilings across route cycles`, async ({page}) => {
     const browserErrors: string[] = [];
-    page.on("console", (message) => { if (message.type() === "error") browserErrors.push(`console: ${message.text()}`); });
+    const failedResources: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() !== "error") return;
+      const location = message.location();
+      browserErrors.push(`console: ${message.text()} @ ${location.url || "anonymous"}:${location.lineNumber}:${location.columnNumber}`);
+    });
     page.on("pageerror", (error) => browserErrors.push(`page: ${error.message}`));
+    page.on("response", (response) => {
+      if (response.status() < 400) return;
+      const request = response.request();
+      let initiatingFrame = "no-frame";
+      try { initiatingFrame = request.frame().url() || "about:blank"; } catch { /* A service-worker request has no frame. */ }
+      failedResources.push(`${response.status()} ${request.resourceType()} ${request.method()} ${response.url()} initiated-by ${initiatingFrame}`);
+    });
     await page.addInitScript(() => {
       const tracked = window as typeof window & {__tutorialReleaseWebglLosses?: number};
       tracked.__tutorialReleaseWebglLosses = 0;
@@ -293,6 +305,7 @@ for (const fixture of [
     expect(new Set(samples.map((sample) => sample.cache))).toEqual(new Set([fixture.cache]));
     expect(new Set(samples.map((sample) => sample.resources))).toEqual(new Set(["6"]));
     expect(await page.evaluate(() => (window as typeof window & {__tutorialReleaseWebglLosses?: number}).__tutorialReleaseWebglLosses ?? 0)).toBe(0);
+    expect(failedResources).toEqual([]);
     expect(browserErrors).toEqual([]);
     console.log(`${fixture.name} telemetry ${JSON.stringify(samples)}`);
     expect(Math.max(...samples.map((sample) => sample.triangles))).toBeLessThanOrEqual(250_000);
