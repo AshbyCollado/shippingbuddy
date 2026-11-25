@@ -1,30 +1,23 @@
 # Shipping Buddy
 
-**Pack it right. One clear step at a time.**
+![Shipping Buddy: from a measured item to a generated fold net to a finished box](docs/images/demo.gif)
 
-Shipping Buddy is a local-first box-planning tool for people who ship things and are tired of guessing which box to use. Tell it what you are shipping and what cardboard you already have, and it works out the rest: a calculated fold layout, an interactive 3D walkthrough of every cut and fold, and numbered build steps you can follow at the packing table.
+Shipping Buddy is a parametric box-planning system that runs entirely in the browser. Given a measured item envelope and a starting material (a flat cardboard sheet, a stock box, or a box already on hand), it computes the construction: the fold net, the cut and score layout, and a step-by-step build sequence, then renders the whole build as an interactive 3D animation before any cardboard is cut.
 
-No account. No server. Your measurements never leave the device.
+There is no backend. All geometry, state, and drafts live on the device.
 
-![Shipping Buddy landing page](docs/images/landing.png)
+## How it works
 
-## What it does
-
-- **Guided planner, one question at a time.** Item, protection, box source, fit, build. Five short steps instead of one giant form.
-- **Real geometry, not vibes.** Enter a measured item envelope, pick a parametric shape (rectangular, cylinder/tube, rounded/ellipsoid, or a measured L/U profile) and a construction profile, and Shipping Buddy calculates the exact net your cardboard needs.
-- **Build from what you have.** Start from a flat sheet of cardboard, a common stock box, or a box already on your shelf. Existing boxes get their own assembly workflows, including height cut-downs, horizontal shrinks, flatten and re-score, corner reforms, telescope builds, and splice prototypes.
-- **Watch it fold before you cut.** A responsive Three.js preview animates the whole build, flat net to finished box, with a slider to scrub to any point and per-step checkpoints.
-- **A plan you can print.** SVG dieline, generated face/score/cut counts, and numbered steps with tools, safety checks, and expected measurements at every stage.
-- **Honest fit checks.** If your sheet is too small, it says so, by how much, and what size would work. It never silently resizes your material.
-- **Local-first.** Drafts autosave on the device, with JSON export/import for backup. Inches in the UI (quarter-inch checkpoints), millimetres under the hood.
+- **Parametric item model.** The item is described as a measured envelope with a shape class (rectangular, cylinder/tube, rounded/ellipsoid, or a measured L/U profile), plus cushioning and tolerance per axis. Internally everything is millimetres; the UI works in inches with quarter-inch checkpoints.
+- **Construction profiles.** A profile turns the envelope into a buildable plan: generated faces, scores, and cuts for flat-sheet construction, or an assembly transformation for an existing box (height cut-down, horizontal shrink, flatten/re-score/rejoin, corner reform, telescope, splice prototype).
+- **FoldNet.** Flat-sheet plans produce an immutable fold net: faces, hinges, and adjacency as data. One authoritative playbook derives everything downstream from that data, the SVG dieline, the numbered steps, and the 3D animation, so the three can never disagree.
+- **3D preview.** The net is rendered as corrugated cardboard in Three.js (React Three Fiber), with deterministic fold checkpoints: scrubbing the animation to a percentage always lands on the same pose, which is what the end-to-end tests assert against.
+- **Fit as a hard check.** If the material cannot contain the generated net, the planner says so with the exact shortfall. It never silently rescales material or geometry.
+- **Local-first state.** Planner state is a versioned, Zod-validated draft in localStorage with JSON export/import. No account, no network calls.
 
 ![The cut-and-fold walkthrough with the finished box at the tape step](docs/images/folded-box.png)
 
-![From measurements to flat net to finished box](docs/images/showcase.png)
-
-## Want to test this? Do this
-
-You need Node.js 22+ and pnpm.
+## Run it
 
 ```bash
 git clone https://github.com/AshbyCollado/shippingbuddy.git
@@ -33,9 +26,7 @@ pnpm install
 pnpm dev
 ```
 
-Open `http://localhost:3000`, hit **Plan my box**, and follow the five steps. To see the full build walkthrough fast, measure any item you have nearby and choose **Flattened cardboard** as the starting material.
-
-Production build:
+Open `http://localhost:3000`. Production build:
 
 ```bash
 pnpm build
@@ -44,30 +35,28 @@ pnpm start
 
 ## Testing
 
-Verified against the current codebase:
-
 ```bash
 pnpm lint       # ESLint, clean
 pnpm typecheck  # tsc --noEmit, clean
 pnpm test       # Vitest: 156 tests across 25 files, all passing
-pnpm test:e2e   # Playwright end-to-end suite (planner flow, cut-and-fold build, accessibility, release flow)
+pnpm test:e2e   # Playwright: planner flow, cut-and-fold build, accessibility, release flow
 pnpm build      # Next.js production build, all routes static
 ```
 
-The E2E suite drives the real app in a real browser, including axe accessibility checks on every planner route and deterministic fold-checkpoint assertions on the 3D build.
+Unit and property tests (Vitest + fast-check) cover the geometry and playbook layers. The Playwright suite drives the real application, including axe accessibility checks on the planner routes and screenshot/checkpoint assertions on the 3D build.
 
-Current E2E status (Nov 2026, low-power VM with software-rendered WebGL): 18 of 33 passing. The known failures are tracked honestly rather than hidden: axe reports color-contrast violations on the fitting Build routes, and several camera/telemetry tests time out under SwiftShader on shared CPU. The planner flow, release flow, and instruction-rail tests pass.
+Current E2E status (Nov 2026, low-power VM with software-rendered WebGL): 18 of 33 passing. Known failures, stated plainly: axe reports color-contrast violations on the fitting Build routes, and several camera/telemetry tests time out under SwiftShader on shared CPU. The planner flow, release flow, and instruction-rail tests pass.
 
-## Tech stack
+## Stack
 
-- **Next.js 16 / React 19 / TypeScript** (App Router, static routes)
-- **Three.js + React Three Fiber + drei** for the corrugated-cardboard 3D preview
-- **Zustand** for planner state, **Zod** for schema validation, **GSAP** for animation
-- **Vitest + fast-check** for unit and property tests, **Playwright + axe** for E2E and accessibility
+- **Next.js 16 / React 19 / TypeScript** (App Router, fully static routes)
+- **Three.js + React Three Fiber + drei** for the cardboard renderer
+- **Zustand** state, **Zod** schemas, **GSAP** animation
+- **Vitest + fast-check**, **Playwright + axe** for verification
 
-## Scope and honesty
+## Scope
 
-Shipping Buddy is geometry-driven. It does not claim carrier compliance, structural safety ratings, or physical load validation. Measure your item, follow the plan, and remeasure the finished inside, the walkthrough's last step exists for a reason.
+Shipping Buddy is a geometry system. It does not claim carrier compliance, structural safety ratings, or physical load validation. The final step of every build plan is remeasuring the finished inside, because the plan is only as good as the measurements it started from.
 
 ## Rendering references
 
